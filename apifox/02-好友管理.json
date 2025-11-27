@@ -1,0 +1,167 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "好友管理模块 API",
+    "description": "好友添加、删除、列表查询（❌ 未实现）",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8081",
+      "description": "本地开发环境"
+    }
+  ],
+  "tags": [
+    {
+      "name": "好友管理",
+      "description": "好友相关接口"
+    }
+  ],
+  "paths": {
+    "/api/friend/list": {
+      "get": {
+        "tags": ["好友管理"],
+        "summary": "❌ 获取好友列表（未实现）",
+        "description": "获取当前用户的好友列表",
+        "security": [{"BearerAuth": []}],
+        "responses": {
+          "200": {
+            "description": "查询成功",
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": 200,
+                  "data": [
+                    {
+                      "userId": 2,
+                      "username": "user002",
+                      "nickname": "李四",
+                      "remark": "我的好友",
+                      "avatar": "https://example.com/avatar.jpg",
+                      "online": true
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/friend/request": {
+      "post": {
+        "tags": ["好友管理"],
+        "summary": "❌ 添加好友（未实现）",
+        "description": "发送好友申请",
+        "security": [{"BearerAuth": []}],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["friendId"],
+                "properties": {
+                  "friendId": {"type": "integer", "example": 2},
+                  "message": {"type": "string", "example": "你好，我想加你为好友"}
+                }
+              },
+              "examples": {
+                "添加好友": {
+                  "value": {
+                    "friendId": 2,
+                    "message": "你好，我想加你为好友"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "申请成功",
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": 200,
+                  "message": "好友申请已发送"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/friend/request/handle": {
+      "post": {
+        "tags": ["好友管理"],
+        "summary": "❌ 处理好友申请（未实现）",
+        "description": "同意或拒绝好友申请",
+        "security": [{"BearerAuth": []}],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["requestId", "status"],
+                "properties": {
+                  "requestId": {"type": "integer", "example": 1},
+                  "status": {
+                    "type": "integer",
+                    "description": "1-同意 2-拒绝",
+                    "example": 1
+                  }
+                }
+              },
+              "examples": {
+                "同意申请": {
+                  "value": {"requestId": 1, "status": 1}
+                },
+                "拒绝申请": {
+                  "value": {"requestId": 1, "status": 2}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "处理成功"
+          }
+        }
+      }
+    },
+    "/api/friend/{friendId}": {
+      "delete": {
+        "tags": ["好友管理"],
+        "summary": "❌ 删除好友（未实现）",
+        "description": "删除指定好友",
+        "security": [{"BearerAuth": []}],
+        "parameters": [
+          {
+            "name": "friendId",
+            "in": "path",
+            "required": true,
+            "schema": {"type": "integer"},
+            "example": 2
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "删除成功"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    }
+  }
+}

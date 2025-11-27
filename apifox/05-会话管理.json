@@ -1,0 +1,154 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "会话管理模块 API",
+    "description": "会话列表、置顶、删除（❌ 未实现）",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8082",
+      "description": "消息服务 - 本地开发环境"
+    }
+  ],
+  "tags": [
+    {
+      "name": "会话管理",
+      "description": "会话相关接口"
+    }
+  ],
+  "paths": {
+    "/api/conversation/list": {
+      "get": {
+        "tags": ["会话管理"],
+        "summary": "❌ 获取会话列表（未实现）",
+        "description": "获取当前用户的所有会话",
+        "security": [{"BearerAuth": []}],
+        "responses": {
+          "200": {
+            "description": "查询成功",
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": 200,
+                  "data": [
+                    {
+                      "conversationId": 1,
+                      "targetId": 2,
+                      "chatType": 1,
+                      "targetName": "李四",
+                      "targetAvatar": "https://example.com/avatar.jpg",
+                      "lastMessage": "Hello",
+                      "lastMsgTime": "2024-01-01 12:00:00",
+                      "unreadCount": 5,
+                      "top": false
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/conversation/top": {
+      "post": {
+        "tags": ["会话管理"],
+        "summary": "❌ 置顶会话（未实现）",
+        "description": "置顶或取消置顶会话",
+        "security": [{"BearerAuth": []}],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["conversationId", "top"],
+                "properties": {
+                  "conversationId": {"type": "integer", "example": 1},
+                  "top": {"type": "boolean", "example": true}
+                }
+              },
+              "examples": {
+                "置顶": {
+                  "value": {"conversationId": 1, "top": true}
+                },
+                "取消置顶": {
+                  "value": {"conversationId": 1, "top": false}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "操作成功"
+          }
+        }
+      }
+    },
+    "/api/conversation/clear-unread": {
+      "post": {
+        "tags": ["会话管理"],
+        "summary": "❌ 清空未读数（未实现）",
+        "description": "清空指定会话的未读消息数",
+        "security": [{"BearerAuth": []}],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["targetId", "chatType"],
+                "properties": {
+                  "targetId": {"type": "integer", "example": 2},
+                  "chatType": {
+                    "type": "integer",
+                    "description": "1-单聊 2-群聊",
+                    "example": 1
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "操作成功"
+          }
+        }
+      }
+    },
+    "/api/conversation/{conversationId}": {
+      "delete": {
+        "tags": ["会话管理"],
+        "summary": "❌ 删除会话（未实现）",
+        "description": "删除指定会话",
+        "security": [{"BearerAuth": []}],
+        "parameters": [
+          {
+            "name": "conversationId",
+            "in": "path",
+            "required": true,
+            "schema": {"type": "integer"},
+            "example": 1
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "删除成功"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    }
+  }
+}

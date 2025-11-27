@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.im.user.mapper.GroupInvitationMapper">
+
+    <resultMap id="BaseResultMap" type="com.im.user.entity.GroupInvitation">
+        <id column="id" property="id"/>
+        <result column="group_id" property="groupId"/>
+        <result column="inviter_id" property="inviterId"/>
+        <result column="invitee_id" property="inviteeId"/>
+        <result column="inviter_role" property="inviterRole"/>
+        <result column="status" property="status"/>
+        <result column="admin_reviewer_id" property="adminReviewerId"/>
+        <result column="admin_review_time" property="adminReviewTime"/>
+        <result column="admin_review_note" property="adminReviewNote"/>
+        <result column="invitee_reply_time" property="inviteeReplyTime"/>
+        <result column="expire_time" property="expireTime"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <!-- 根据ID查询 -->
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT * FROM group_invitation WHERE id = #{id}
+    </select>
+
+    <!-- 更新 -->
+    <update id="updateById">
+        UPDATE group_invitation SET
+            status = #{status},
+            admin_reviewer_id = #{adminReviewerId},
+            admin_review_time = #{adminReviewTime},
+            admin_review_note = #{adminReviewNote},
+            invitee_reply_time = #{inviteeReplyTime},
+            update_time = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <!-- 查询是否存在待处理的邀请 -->
+    <select id="selectPendingInvitation" resultMap="BaseResultMap">
+        SELECT * FROM group_invitation
+        WHERE group_id = #{groupId}
+          AND invitee_id = #{inviteeId}
+          AND status IN (0, 1)
+          AND expire_time > NOW()
+        LIMIT 1
+    </select>
+
+    <!-- 批量插入邀请记录 -->
+    <insert id="batchInsert" parameterType="list">
+        INSERT INTO group_invitation (
+            group_id, inviter_id, invitee_id, inviter_role, 
+            status, expire_time, create_time, update_time
+        ) VALUES
+        <foreach collection="list" item="item" separator=",">
+            (
+                #{item.groupId}, #{item.inviterId}, #{item.inviteeId}, #{item.inviterRole},
+                #{item.status}, #{item.expireTime}, NOW(), NOW()
+            )
+        </foreach>
+    </insert>
+
+    <!-- 查询用户收到的待处理邀请列表 -->
+    <select id="selectPendingByInviteeId" resultMap="BaseResultMap">
+        SELECT * FROM group_invitation
+        WHERE invitee_id = #{inviteeId}
+          AND status = 1
+          AND expire_time > NOW()
+        ORDER BY create_time DESC
+    </select>
+
+</mapper>

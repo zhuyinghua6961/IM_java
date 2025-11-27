@@ -1,0 +1,799 @@
+{
+  "info": {
+    "name": "IM Chat System",
+    "description": "仿微信即时通讯系统 - 完整接口文档及测试用例",
+    "version": "1.0.0",
+    "_postman_id": "im-chat-system-v1"
+  },
+  "apifoxProject": {
+    "name": "IM Chat System",
+    "description": "仿微信即时通讯系统",
+    "version": "1.0.0"
+  },
+  "folders": [
+    {
+      "id": "folder_user",
+      "name": "用户管理",
+      "description": "用户相关接口"
+    },
+    {
+      "id": "folder_friend",
+      "name": "好友管理",
+      "description": "好友相关接口"
+    },
+    {
+      "id": "folder_group",
+      "name": "群组管理",
+      "description": "群组相关接口"
+    },
+    {
+      "id": "folder_message",
+      "name": "消息管理",
+      "description": "消息相关接口"
+    },
+    {
+      "id": "folder_moments",
+      "name": "朋友圈",
+      "description": "朋友圈相关接口"
+    }
+  ],
+  "apis": [
+    {
+      "id": "api_register",
+      "folderId": "folder_user",
+      "name": "用户注册",
+      "method": "POST",
+      "path": "/api/user/register",
+      "description": "新用户注册接口",
+      "request": {
+        "body": {
+          "type": "application/json",
+          "jsonSchema": {
+            "type": "object",
+            "properties": {
+              "username": {"type": "string", "description": "用户名"},
+              "password": {"type": "string", "description": "密码"},
+              "nickname": {"type": "string", "description": "昵称"},
+              "phone": {"type": "string", "description": "手机号"},
+              "email": {"type": "string", "description": "邮箱"}
+            },
+            "required": ["username", "password", "nickname"]
+          }
+        }
+      },
+      "response": {
+        "jsonSchema": {
+          "type": "object",
+          "properties": {
+            "code": {"type": "integer"},
+            "message": {"type": "string"},
+            "data": {
+              "type": "object",
+              "properties": {
+                "userId": {"type": "integer"},
+                "username": {"type": "string"},
+                "nickname": {"type": "string"},
+                "avatar": {"type": "string"}
+              }
+            },
+            "timestamp": {"type": "integer"}
+          }
+        }
+      },
+      "testCases": [
+        {
+          "name": "正常注册",
+          "priority": "P0",
+          "request": {
+            "body": {
+              "username": "testuser001",
+              "password": "123456",
+              "nickname": "测试用户",
+              "phone": "13800138000",
+              "email": "test@example.com"
+            }
+          },
+          "assertions": [
+            {
+              "type": "equals",
+              "target": "$.code",
+              "value": 200
+            },
+            {
+              "type": "equals",
+              "target": "$.message",
+              "value": "注册成功"
+            },
+            {
+              "type": "notNull",
+              "target": "$.data.userId"
+            }
+          ]
+        },
+        {
+          "name": "用户名已存在",
+          "priority": "P1",
+          "request": {
+            "body": {
+              "username": "admin",
+              "password": "123456",
+              "nickname": "测试"
+            }
+          },
+          "assertions": [
+            {
+              "type": "equals",
+              "target": "$.code",
+              "value": 1001
+            },
+            {
+              "type": "equals",
+              "target": "$.message",
+              "value": "用户名已存在"
+            }
+          ]
+        },
+        {
+          "name": "用户名格式错误",
+          "priority": "P1",
+          "request": {
+            "body": {
+              "username": "ab",
+              "password": "123456",
+              "nickname": "测试"
+            }
+          },
+          "assertions": [
+            {
+              "type": "equals",
+              "target": "$.code",
+              "value": 400
+            }
+          ]
+        },
+        {
+          "name": "密码格式错误",
+          "priority": "P1",
+          "request": {
+            "body": {
+              "username": "testuser002",
+              "password": "123",
+              "nickname": "测试"
+            }
+          },
+          "assertions": [
+            {
+              "type": "equals",
+              "target": "$.code",
+              "value": 400
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "api_login",
+      "folderId": "folder_user",
+      "name": "用户登录",
+      "method": "POST",
+      "path": "/api/user/login",
+      "description": "用户登录获取Token",
+      "request": {
+        "body": {
+          "type": "application/json",
+          "jsonSchema": {
+            "type": "object",
+            "properties": {
+              "username": {"type": "string"},
+              "password": {"type": "string"}
+            },
+            "required": ["username", "password"]
+          }
+        }
+      },
+      "response": {
+        "jsonSchema": {
+          "type": "object",
+          "properties": {
+            "code": {"type": "integer"},
+            "message": {"type": "string"},
+            "data": {
+              "type": "object",
+              "properties": {
+                "token": {"type": "string"},
+                "userInfo": {
+                  "type": "object",
+                  "properties": {
+                    "userId": {"type": "integer"},
+                    "username": {"type": "string"},
+                    "nickname": {"type": "string"},
+                    "avatar": {"type": "string"}
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "testCases": [
+        {
+          "name": "正常登录",
+          "priority": "P0",
+          "request": {
+            "body": {
+              "username": "testuser001",
+              "password": "123456"
+            }
+          },
+          "assertions": [
+            {
+              "type": "equals",
+              "target": "$.code",
+              "value": 200
+            },
+            {
+              "type": "notNull",
+              "target": "$.data.token"
+            },
+            {
+              "type": "notNull",
+              "target": "$.data.userInfo.userId"
+            }
+          ],
+          "postScript": "pm.environment.set('token', pm.response.json().data.token);"
+        },
+        {
+          "name": "用户名不存在",
+          "priority": "P1",
+          "request": {
+            "body": {
+              "username": "notexist",
+              "password": "123456"
+            }
+          },
+          "assertions": [
+            {
+              "type": "equals",
+              "target": "$.code",
+              "value": 1002
+            }
+          ]
+        },
+        {
+          "name": "密码错误",
+          "priority": "P1",
+          "request": {
+            "body": {
+              "username": "testuser001",
+              "password": "wrongpass"
+            }
+          },
+          "assertions": [
+            {
+              "type": "equals",
+              "target": "$.code",
+              "value": 1003
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "api_get_user_info",
+      "folderId": "folder_user",
+      "name": "获取用户信息",
+      "method": "GET",
+      "path": "/api/user/info/{userId}",
+      "description": "根据用户ID获取用户详细信息",
+      "request": {
+        "headers": [
+          {
+            "name": "Authorization",
+            "value": "Bearer {{token}}",
+            "required": true
+          }
+        ],
+        "path": [
+          {
+            "name": "userId",
+            "value": "1",
+            "required": true
+          }
+        ]
+      },
+      "testCases": [
+        {
+          "name": "正常查询",
+          "priority": "P0",
+          "request": {
+            "path": {
+              "userId": "1"
+            }
+          },
+          "assertions": [
+            {
+              "type": "equals",
+              "target": "$.code",
+              "value": 200
+            },
+            {
+              "type": "notNull",
+              "target": "$.data.userId"
+            }
+          ]
+        },
+        {
+          "name": "未登录查询",
+          "priority": "P1",
+          "request": {
+            "headers": [],
+            "path": {
+              "userId": "1"
+            }
+          },
+          "assertions": [
+            {
+              "type": "equals",
+              "target": "$.code",
+              "value": 401
+            }
+          ]
+        },
+        {
+          "name": "用户不存在",
+          "priority": "P1",
+          "request": {
+            "path": {
+              "userId": "99999"
+            }
+          },
+          "assertions": [
+            {
+              "type": "equals",
+              "target": "$.code",
+              "value": 1002
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "api_friend_list",
+      "folderId": "folder_friend",
+      "name": "获取好友列表",
+      "method": "GET",
+      "path": "/api/friend/list",
+      "description": "获取当前用户的好友列表",
+      "request": {
+        "headers": [
+          {
+            "name": "Authorization",
+            "value": "Bearer {{token}}",
+            "required": true
+          }
+        ]
+      },
+      "testCases": [
+        {
+          "name": "正常查询",
+          "priority": "P0",
+          "assertions": [
+            {
+              "type": "equals",
+              "target": "$.code",
+              "value": 200
+            },
+            {
+              "type": "isArray",
+              "target": "$.data"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "api_add_friend",
+      "folderId": "folder_friend",
+      "name": "添加好友",
+      "method": "POST",
+      "path": "/api/friend/request",
+      "description": "发送好友申请",
+      "request": {
+        "headers": [
+          {
+            "name": "Authorization",
+            "value": "Bearer {{token}}",
+            "required": true
+          }
+        ],
+        "body": {
+          "type": "application/json",
+          "jsonSchema": {
+            "type": "object",
+            "properties": {
+              "friendId": {"type": "integer"},
+              "message": {"type": "string"}
+            },
+            "required": ["friendId"]
+          }
+        }
+      },
+      "testCases": [
+        {
+          "name": "正常添加好友",
+          "priority": "P0",
+          "request": {
+            "body": {
+              "friendId": 2,
+              "message": "你好，我想加你为好友"
+            }
+          },
+          "assertions": [
+            {
+              "type": "equals",
+              "target": "$.code",
+              "value": 200
+            }
+          ]
+        },
+        {
+          "name": "添加自己为好友",
+          "priority": "P1",
+          "request": {
+            "body": {
+              "friendId": 1,
+              "message": "测试"
+            }
+          },
+          "assertions": [
+            {
+              "type": "equals",
+              "target": "$.code",
+              "value": 2004
+            }
+          ]
+        },
+        {
+          "name": "好友已存在",
+          "priority": "P1",
+          "request": {
+            "body": {
+              "friendId": 2,
+              "message": "测试"
+            }
+          },
+          "assertions": [
+            {
+              "type": "equals",
+              "target": "$.code",
+              "value": 2001
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "api_handle_friend_request",
+      "folderId": "folder_friend",
+      "name": "处理好友申请",
+      "method": "POST",
+      "path": "/api/friend/request/handle",
+      "description": "同意或拒绝好友申请",
+      "request": {
+        "headers": [
+          {
+            "name": "Authorization",
+            "value": "Bearer {{token}}",
+            "required": true
+          }
+        ],
+        "body": {
+          "type": "application/json",
+          "jsonSchema": {
+            "type": "object",
+            "properties": {
+              "requestId": {"type": "integer"},
+              "status": {"type": "integer", "enum": [1, 2]}
+            },
+            "required": ["requestId", "status"]
+          }
+        }
+      },
+      "testCases": [
+        {
+          "name": "同意好友申请",
+          "priority": "P0",
+          "request": {
+            "body": {
+              "requestId": 1,
+              "status": 1
+            }
+          },
+          "assertions": [
+            {
+              "type": "equals",
+              "target": "$.code",
+              "value": 200
+            }
+          ]
+        },
+        {
+          "name": "拒绝好友申请",
+          "priority": "P0",
+          "request": {
+            "body": {
+              "requestId": 2,
+              "status": 2
+            }
+          },
+          "assertions": [
+            {
+              "type": "equals",
+              "target": "$.code",
+              "value": 200
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "api_conversation_list",
+      "folderId": "folder_message",
+      "name": "获取会话列表",
+      "method": "GET",
+      "path": "/api/conversation/list",
+      "description": "获取当前用户的会话列表",
+      "request": {
+        "headers": [
+          {
+            "name": "Authorization",
+            "value": "Bearer {{token}}",
+            "required": true
+          }
+        ]
+      },
+      "testCases": [
+        {
+          "name": "正常查询",
+          "priority": "P0",
+          "assertions": [
+            {
+              "type": "equals",
+              "target": "$.code",
+              "value": 200
+            },
+            {
+              "type": "isArray",
+              "target": "$.data"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "api_message_history",
+      "folderId": "folder_message",
+      "name": "获取历史消息",
+      "method": "GET",
+      "path": "/api/message/history",
+      "description": "获取指定会话的历史消息",
+      "request": {
+        "headers": [
+          {
+            "name": "Authorization",
+            "value": "Bearer {{token}}",
+            "required": true
+          }
+        ],
+        "query": [
+          {
+            "name": "targetId",
+            "value": "2",
+            "required": true
+          },
+          {
+            "name": "chatType",
+            "value": "1",
+            "required": true
+          },
+          {
+            "name": "page",
+            "value": "1"
+          },
+          {
+            "name": "size",
+            "value": "20"
+          }
+        ]
+      },
+      "testCases": [
+        {
+          "name": "查询单聊历史消息",
+          "priority": "P0",
+          "request": {
+            "query": {
+              "targetId": "2",
+              "chatType": "1",
+              "page": "1",
+              "size": "20"
+            }
+          },
+          "assertions": [
+            {
+              "type": "equals",
+              "target": "$.code",
+              "value": 200
+            },
+            {
+              "type": "notNull",
+              "target": "$.data.total"
+            }
+          ]
+        },
+        {
+          "name": "查询群聊历史消息",
+          "priority": "P0",
+          "request": {
+            "query": {
+              "targetId": "1",
+              "chatType": "2",
+              "page": "1",
+              "size": "20"
+            }
+          },
+          "assertions": [
+            {
+              "type": "equals",
+              "target": "$.code",
+              "value": 200
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "api_moments_publish",
+      "folderId": "folder_moments",
+      "name": "发布动态",
+      "method": "POST",
+      "path": "/api/moments/publish",
+      "description": "发布朋友圈动态",
+      "request": {
+        "headers": [
+          {
+            "name": "Authorization",
+            "value": "Bearer {{token}}",
+            "required": true
+          }
+        ],
+        "body": {
+          "type": "application/json",
+          "jsonSchema": {
+            "type": "object",
+            "properties": {
+              "content": {"type": "string"},
+              "images": {"type": "array", "items": {"type": "string"}},
+              "video": {"type": "string"},
+              "location": {"type": "string"},
+              "visibleType": {"type": "integer"}
+            }
+          }
+        }
+      },
+      "testCases": [
+        {
+          "name": "发布文字动态",
+          "priority": "P0",
+          "request": {
+            "body": {
+              "content": "今天天气真好！",
+              "visibleType": 0
+            }
+          },
+          "assertions": [
+            {
+              "type": "equals",
+              "target": "$.code",
+              "value": 200
+            },
+            {
+              "type": "notNull",
+              "target": "$.data.momentsId"
+            }
+          ]
+        },
+        {
+          "name": "发布图片动态",
+          "priority": "P0",
+          "request": {
+            "body": {
+              "content": "分享美图",
+              "images": ["https://example.com/image1.jpg", "https://example.com/image2.jpg"],
+              "visibleType": 0
+            }
+          },
+          "assertions": [
+            {
+              "type": "equals",
+              "target": "$.code",
+              "value": 200
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "api_moments_list",
+      "folderId": "folder_moments",
+      "name": "获取动态列表",
+      "method": "GET",
+      "path": "/api/moments/list",
+      "description": "获取朋友圈动态列表",
+      "request": {
+        "headers": [
+          {
+            "name": "Authorization",
+            "value": "Bearer {{token}}",
+            "required": true
+          }
+        ],
+        "query": [
+          {
+            "name": "page",
+            "value": "1"
+          },
+          {
+            "name": "size",
+            "value": "20"
+          }
+        ]
+      },
+      "testCases": [
+        {
+          "name": "正常查询",
+          "priority": "P0",
+          "assertions": [
+            {
+              "type": "equals",
+              "target": "$.code",
+              "value": 200
+            },
+            {
+              "type": "notNull",
+              "target": "$.data.total"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "environments": [
+    {
+      "name": "本地开发环境",
+      "baseUrl": "http://localhost:8080",
+      "variables": [
+        {
+          "name": "token",
+          "value": "",
+          "description": "登录Token"
+        },
+        {
+          "name": "userId",
+          "value": "1",
+          "description": "当前用户ID"
+        }
+      ]
+    },
+    {
+      "name": "测试环境",
+      "baseUrl": "http://test.example.com",
+      "variables": [
+        {
+          "name": "token",
+          "value": "",
+          "description": "登录Token"
+        }
+      ]
+    }
+  ]
+}

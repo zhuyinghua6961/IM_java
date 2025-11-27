@@ -1,0 +1,185 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "文件管理模块 API",
+    "description": "文件上传、下载（❌ 未实现）",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8083",
+      "description": "文件服务 - 本地开发环境"
+    }
+  ],
+  "tags": [
+    {
+      "name": "文件管理",
+      "description": "文件相关接口"
+    }
+  ],
+  "paths": {
+    "/api/file/upload": {
+      "post": {
+        "tags": ["文件管理"],
+        "summary": "❌ 上传文件（未实现）",
+        "description": "上传任意类型文件",
+        "security": [{"BearerAuth": []}],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "要上传的文件"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "上传成功",
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": 200,
+                  "data": {
+                    "url": "https://minio.xxx.com/im-chat/xxx.jpg",
+                    "fileName": "file.jpg",
+                    "fileSize": 102400,
+                    "fileType": "image/jpeg"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/file/upload/image": {
+      "post": {
+        "tags": ["文件管理"],
+        "summary": "❌ 上传图片（未实现）",
+        "description": "上传图片文件，支持生成缩略图",
+        "security": [{"BearerAuth": []}],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "上传成功",
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": 200,
+                  "data": {
+                    "url": "https://minio.xxx.com/im-chat/xxx.jpg",
+                    "thumbnailUrl": "https://minio.xxx.com/im-chat/xxx_thumb.jpg"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/file/upload/video": {
+      "post": {
+        "tags": ["文件管理"],
+        "summary": "❌ 上传视频（未实现）",
+        "description": "上传视频文件，自动生成封面",
+        "security": [{"BearerAuth": []}],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "上传成功",
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": 200,
+                  "data": {
+                    "url": "https://minio.xxx.com/im-chat/xxx.mp4",
+                    "coverUrl": "https://minio.xxx.com/im-chat/xxx_cover.jpg",
+                    "duration": 120
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/file/download": {
+      "get": {
+        "tags": ["文件管理"],
+        "summary": "❌ 下载文件（未实现）",
+        "description": "下载指定文件",
+        "security": [{"BearerAuth": []}],
+        "parameters": [
+          {
+            "name": "url",
+            "in": "query",
+            "required": true,
+            "schema": {"type": "string"},
+            "example": "https://minio.xxx.com/im-chat/xxx.jpg"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "文件内容",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    }
+  }
+}

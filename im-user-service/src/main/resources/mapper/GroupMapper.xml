@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.im.user.mapper.GroupMapper">
+
+    <resultMap id="BaseResultMap" type="com.im.user.entity.Group">
+        <id column="id" property="id"/>
+        <result column="group_name" property="groupName"/>
+        <result column="avatar" property="avatar"/>
+        <result column="owner_id" property="ownerId"/>
+        <result column="notice" property="notice"/>
+        <result column="max_members" property="maxMembers"/>
+        <result column="status" property="status"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <!-- 插入群组 -->
+    <insert id="insert" parameterType="com.im.user.entity.Group" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO `group` (
+            group_name,
+            avatar,
+            owner_id,
+            notice,
+            max_members,
+            status
+        ) VALUES (
+            #{groupName},
+            #{avatar},
+            #{ownerId},
+            #{notice},
+            #{maxMembers},
+            #{status}
+        )
+    </insert>
+
+    <!-- 根据ID查询 -->
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT *
+        FROM `group`
+        WHERE id = #{id}
+    </select>
+
+    <!-- 查询用户的群组列表 -->
+    <select id="selectByUserId" resultMap="BaseResultMap">
+        SELECT g.*
+        FROM `group` g
+        INNER JOIN group_member gm ON g.id = gm.group_id
+        WHERE gm.user_id = #{userId}
+          AND g.status = 1
+          AND gm.status = 1
+        ORDER BY gm.join_time DESC
+    </select>
+
+    <!-- 更新群组信息 -->
+    <update id="update" parameterType="com.im.user.entity.Group">
+        UPDATE `group`
+        <set>
+            <if test="groupName != null">group_name = #{groupName},</if>
+            <if test="avatar != null">avatar = #{avatar},</if>
+            <if test="notice != null">notice = #{notice},</if>
+            <if test="maxMembers != null">max_members = #{maxMembers},</if>
+            <if test="status != null">status = #{status},</if>
+        </set>
+        WHERE id = #{id}
+    </update>
+
+    <!-- 根据ID更新群组 -->
+    <update id="updateById" parameterType="com.im.user.entity.Group">
+        UPDATE `group`
+        SET group_name = #{groupName},
+            avatar = #{avatar},
+            notice = #{notice},
+            max_members = #{maxMembers},
+            status = #{status},
+            update_time = #{updateTime}
+        WHERE id = #{id}
+    </update>
+
+    <!-- 解散群组（软删除） -->
+    <update id="deleteById">
+        UPDATE `group`
+        SET status = 0
+        WHERE id = #{id}
+    </update>
+
+</mapper>

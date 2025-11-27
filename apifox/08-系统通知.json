@@ -1,0 +1,139 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "系统通知模块 API",
+    "description": "通知列表、已读标记（❌ 未实现）",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8081",
+      "description": "本地开发环境"
+    }
+  ],
+  "tags": [
+    {
+      "name": "系统通知",
+      "description": "系统通知相关接口"
+    }
+  ],
+  "paths": {
+    "/api/notification/list": {
+      "get": {
+        "tags": ["系统通知"],
+        "summary": "❌ 获取通知列表（未实现）",
+        "description": "获取当前用户的系统通知列表",
+        "security": [{"BearerAuth": []}],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {"type": "integer", "default": 1}
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "schema": {"type": "integer", "default": 20}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "查询成功",
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": 200,
+                  "data": {
+                    "total": 50,
+                    "list": [
+                      {
+                        "notificationId": 1,
+                        "type": 1,
+                        "title": "好友申请",
+                        "content": "张三请求添加你为好友",
+                        "data": {
+                          "requestId": 1,
+                          "fromUserId": 2
+                        },
+                        "read": false,
+                        "createTime": "2024-01-01 12:00:00"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/notification/read": {
+      "post": {
+        "tags": ["系统通知"],
+        "summary": "❌ 标记通知已读（未实现）",
+        "description": "标记指定通知为已读",
+        "security": [{"BearerAuth": []}],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["notificationIds"],
+                "properties": {
+                  "notificationIds": {
+                    "type": "array",
+                    "items": {"type": "integer"},
+                    "example": [1, 2, 3]
+                  }
+                }
+              },
+              "examples": {
+                "标记已读": {
+                  "value": {"notificationIds": [1, 2, 3]}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "标记成功"
+          }
+        }
+      }
+    },
+    "/api/notification/unread-count": {
+      "get": {
+        "tags": ["系统通知"],
+        "summary": "❌ 获取未读通知数（未实现）",
+        "description": "获取当前用户的未读通知数量",
+        "security": [{"BearerAuth": []}],
+        "responses": {
+          "200": {
+            "description": "查询成功",
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": 200,
+                  "data": {
+                    "count": 5
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    }
+  }
+}

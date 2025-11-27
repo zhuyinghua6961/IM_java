@@ -1,0 +1,253 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "群组管理模块 API",
+    "description": "群组创建、成员管理（❌ 未实现）",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8081",
+      "description": "本地开发环境"
+    }
+  ],
+  "tags": [
+    {
+      "name": "群组管理",
+      "description": "群组相关接口"
+    }
+  ],
+  "paths": {
+    "/api/group/create": {
+      "post": {
+        "tags": ["群组管理"],
+        "summary": "❌ 创建群组（未实现）",
+        "description": "创建新的聊天群组",
+        "security": [{"BearerAuth": []}],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["groupName"],
+                "properties": {
+                  "groupName": {"type": "string", "example": "技术交流群"},
+                  "avatar": {"type": "string", "example": "https://example.com/group-avatar.jpg"},
+                  "notice": {"type": "string", "example": "欢迎大家加入"},
+                  "memberIds": {
+                    "type": "array",
+                    "items": {"type": "integer"},
+                    "example": [2, 3, 4]
+                  }
+                }
+              },
+              "examples": {
+                "创建群组": {
+                  "value": {
+                    "groupName": "技术交流群",
+                    "avatar": "https://example.com/group-avatar.jpg",
+                    "notice": "欢迎大家加入",
+                    "memberIds": [2, 3, 4]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "创建成功",
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": 200,
+                  "data": {
+                    "groupId": 1,
+                    "groupName": "技术交流群",
+                    "memberCount": 4
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/group/list": {
+      "get": {
+        "tags": ["群组管理"],
+        "summary": "❌ 获取群组列表（未实现）",
+        "description": "获取当前用户加入的所有群组",
+        "security": [{"BearerAuth": []}],
+        "responses": {
+          "200": {
+            "description": "查询成功",
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": 200,
+                  "data": [
+                    {
+                      "groupId": 1,
+                      "groupName": "技术交流群",
+                      "avatar": "https://example.com/group-avatar.jpg",
+                      "memberCount": 100,
+                      "notice": "欢迎大家"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/group/{groupId}": {
+      "get": {
+        "tags": ["群组管理"],
+        "summary": "❌ 获取群组详情（未实现）",
+        "description": "获取指定群组的详细信息",
+        "security": [{"BearerAuth": []}],
+        "parameters": [
+          {
+            "name": "groupId",
+            "in": "path",
+            "required": true,
+            "schema": {"type": "integer"},
+            "example": 1
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "查询成功",
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": 200,
+                  "data": {
+                    "groupId": 1,
+                    "groupName": "技术交流群",
+                    "avatar": "https://example.com/group-avatar.jpg",
+                    "ownerId": 1,
+                    "notice": "欢迎大家",
+                    "memberCount": 100,
+                    "maxMembers": 500
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/group/{groupId}/members": {
+      "get": {
+        "tags": ["群组管理"],
+        "summary": "❌ 获取群成员列表（未实现）",
+        "description": "获取指定群组的所有成员",
+        "security": [{"BearerAuth": []}],
+        "parameters": [
+          {
+            "name": "groupId",
+            "in": "path",
+            "required": true,
+            "schema": {"type": "integer"},
+            "example": 1
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "查询成功",
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": 200,
+                  "data": [
+                    {
+                      "userId": 1,
+                      "nickname": "张三",
+                      "avatar": "https://example.com/avatar.jpg",
+                      "role": 2,
+                      "joinTime": "2024-01-01 12:00:00"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/group/{groupId}/invite": {
+      "post": {
+        "tags": ["群组管理"],
+        "summary": "❌ 邀请加入群组（未实现）",
+        "description": "邀请用户加入指定群组",
+        "security": [{"BearerAuth": []}],
+        "parameters": [
+          {
+            "name": "groupId",
+            "in": "path",
+            "required": true,
+            "schema": {"type": "integer"},
+            "example": 1
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "userIds": {
+                    "type": "array",
+                    "items": {"type": "integer"},
+                    "example": [5, 6, 7]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "邀请成功"
+          }
+        }
+      }
+    },
+    "/api/group/{groupId}/quit": {
+      "post": {
+        "tags": ["群组管理"],
+        "summary": "❌ 退出群组（未实现）",
+        "description": "退出指定群组",
+        "security": [{"BearerAuth": []}],
+        "parameters": [
+          {
+            "name": "groupId",
+            "in": "path",
+            "required": true,
+            "schema": {"type": "integer"},
+            "example": 1
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "退出成功"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    }
+  }
+}

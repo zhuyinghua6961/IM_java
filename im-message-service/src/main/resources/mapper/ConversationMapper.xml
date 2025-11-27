@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.im.message.mapper.ConversationMapper">
+
+    <resultMap id="BaseResultMap" type="com.im.message.entity.Conversation">
+        <id column="id" property="id"/>
+        <result column="user_id" property="userId"/>
+        <result column="target_id" property="targetId"/>
+        <result column="chat_type" property="chatType"/>
+        <result column="last_msg_id" property="lastMsgId"/>
+        <result column="unread_count" property="unreadCount"/>
+        <result column="top" property="top"/>
+        <result column="hidden" property="hidden"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <!-- 插入会话 -->
+    <insert id="insert" parameterType="com.im.message.entity.Conversation" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO conversation (
+            user_id,
+            target_id,
+            chat_type,
+            last_msg_id,
+            unread_count,
+            top,
+            hidden
+        ) VALUES (
+            #{userId},
+            #{targetId},
+            #{chatType},
+            #{lastMsgId},
+            #{unreadCount},
+            #{top},
+            #{hidden}
+        )
+    </insert>
+
+    <!-- 根据ID查询会话 -->
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT *
+        FROM conversation
+        WHERE id = #{id}
+    </select>
+
+    <!-- 查询用户的会话列表 -->
+    <select id="selectByUserId" resultMap="BaseResultMap">
+        SELECT *
+        FROM conversation
+        WHERE user_id = #{userId}
+          AND (hidden = 0 OR hidden IS NULL)
+        ORDER BY top DESC, update_time DESC
+    </select>
+
+    <!-- 查询指定会话 -->
+    <select id="selectByUserIdAndTarget" resultMap="BaseResultMap">
+        SELECT *
+        FROM conversation
+        WHERE user_id = #{userId}
+          AND target_id = #{targetId}
+          AND chat_type = #{chatType}
+    </select>
+
+    <!-- 更新会话 -->
+    <update id="update" parameterType="com.im.message.entity.Conversation">
+        UPDATE conversation
+        SET last_msg_id = #{lastMsgId},
+            unread_count = #{unreadCount},
+            top = #{top},
+            hidden = #{hidden},
+            update_time = CURRENT_TIMESTAMP
+        WHERE id = #{id}
+    </update>
+
+    <!-- 更新最后一条消息 -->
+    <update id="updateLastMessage">
+        UPDATE conversation
+        SET last_msg_id = #{lastMsgId},
+            update_time = CURRENT_TIMESTAMP
+        WHERE id = #{id}
+    </update>
+
+    <!-- 增加未读数 -->
+    <update id="incrementUnreadCount">
+        UPDATE conversation
+        SET unread_count = unread_count + 1,
+            update_time = CURRENT_TIMESTAMP
+        WHERE id = #{id}
+    </update>
+
+    <!-- 清空未读数 -->
+    <update id="clearUnreadCount">
+        UPDATE conversation
+        SET unread_count = 0,
+            update_time = CURRENT_TIMESTAMP
+        WHERE id = #{id}
+    </update>
+
+    <!-- 隐藏会话 -->
+    <update id="hideConversation">
+        UPDATE conversation
+        SET hidden = 1,
+            update_time = CURRENT_TIMESTAMP
+        WHERE id = #{conversationId}
+    </update>
+
+    <!-- 显示会话 -->
+    <update id="showConversation">
+        UPDATE conversation
+        SET hidden = 0,
+            update_time = CURRENT_TIMESTAMP
+        WHERE id = #{conversationId}
+    </update>
+
+    <!-- 根据用户ID和目标ID显示会话 -->
+    <update id="showConversationByUserAndTarget">
+        UPDATE conversation
+        SET hidden = 0,
+            update_time = CURRENT_TIMESTAMP
+        WHERE user_id = #{userId}
+          AND target_id = #{targetId}
+          AND chat_type = #{chatType}
+    </update>
+
+    <!-- 设置置顶 -->
+    <update id="updateTop">
+        UPDATE conversation
+        SET top = #{top},
+            update_time = CURRENT_TIMESTAMP
+        WHERE id = #{id}
+    </update>
+
+</mapper>

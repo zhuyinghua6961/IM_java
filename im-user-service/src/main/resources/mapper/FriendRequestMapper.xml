@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.im.user.mapper.FriendRequestMapper">
+
+    <resultMap id="BaseResultMap" type="com.im.user.entity.FriendRequest">
+        <id column="id" property="id"/>
+        <result column="from_user_id" property="fromUserId"/>
+        <result column="to_user_id" property="toUserId"/>
+        <result column="message" property="message"/>
+        <result column="status" property="status"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, from_user_id, to_user_id, message, status, create_time, update_time
+    </sql>
+
+    <!-- 插入好友申请 -->
+    <insert id="insert" parameterType="com.im.user.entity.FriendRequest" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO friend_request (from_user_id, to_user_id, message, status)
+        VALUES (#{fromUserId}, #{toUserId}, #{message}, #{status})
+    </insert>
+
+    <!-- 根据ID查询好友申请 -->
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM friend_request
+        WHERE id = #{id}
+    </select>
+
+    <!-- 查询两个用户之间的待处理申请 -->
+    <select id="selectPendingRequest" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM friend_request
+        WHERE from_user_id = #{fromUserId} 
+          AND to_user_id = #{toUserId}
+          AND status = 0
+        ORDER BY create_time DESC
+        LIMIT 1
+    </select>
+
+    <!-- 更新申请状态 -->
+    <update id="updateStatus">
+        UPDATE friend_request
+        SET status = #{status}
+        WHERE id = #{id}
+    </update>
+
+    <!-- 查询用户收到的好友申请列表 -->
+    <select id="selectReceivedRequests" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM friend_request
+        WHERE to_user_id = #{toUserId}
+          AND status = 0
+        ORDER BY create_time DESC
+    </select>
+
+</mapper>

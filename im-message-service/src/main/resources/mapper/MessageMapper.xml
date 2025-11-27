@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.im.message.mapper.MessageMapper">
+
+    <resultMap id="BaseResultMap" type="com.im.message.entity.Message">
+        <id column="id" property="id"/>
+        <result column="from_user_id" property="fromUserId"/>
+        <result column="to_id" property="toId"/>
+        <result column="chat_type" property="chatType"/>
+        <result column="msg_type" property="msgType"/>
+        <result column="content" property="content"/>
+        <result column="url" property="url"/>
+        <result column="status" property="status"/>
+        <result column="send_time" property="sendTime"/>
+        <result column="recall_time" property="recallTime"/>
+    </resultMap>
+
+    <!-- 插入消息 -->
+    <insert id="insert" parameterType="com.im.message.entity.Message" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO message (
+            from_user_id,
+            to_id,
+            chat_type,
+            msg_type,
+            content,
+            url,
+            status,
+            send_time
+        ) VALUES (
+            #{fromUserId},
+            #{toId},
+            #{chatType},
+            #{msgType},
+            #{content},
+            #{url},
+            #{status},
+            #{sendTime}
+        )
+    </insert>
+
+    <!-- 根据ID查询消息 -->
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT *
+        FROM message
+        WHERE id = #{id}
+    </select>
+
+    <!-- 查询历史消息（分页） -->
+    <select id="selectHistoryMessages" resultMap="BaseResultMap">
+        SELECT *
+        FROM message
+        WHERE status = 1
+        <choose>
+            <when test="chatType == 1">
+                <!-- 单聊：查询双方的消息 -->
+                AND chat_type = 1
+                AND (
+                    (from_user_id = #{userId} AND to_id = #{targetId})
+                    OR
+                    (from_user_id = #{targetId} AND to_id = #{userId})
+                )
+            </when>
+            <when test="chatType == 2">
+                <!-- 群聊：查询群组的消息 -->
+                AND chat_type = 2
+                AND to_id = #{targetId}
+            </when>
+        </choose>
+        ORDER BY send_time DESC
+        LIMIT #{offset}, #{limit}
+    </select>
+
+    <!-- 统计历史消息总数 -->
+    <select id="countHistoryMessages" resultType="int">
+        SELECT COUNT(*)
+        FROM message
+        WHERE status = 1
+        <choose>
+            <when test="chatType == 1">
+                <!-- 单聊：统计双方的消息 -->
+                AND chat_type = 1
+                AND (
+                    (from_user_id = #{userId} AND to_id = #{targetId})
+                    OR
+                    (from_user_id = #{targetId} AND to_id = #{userId})
+                )
+            </when>
+            <when test="chatType == 2">
+                <!-- 群聊：统计群组的消息 -->
+                AND chat_type = 2
+                AND to_id = #{targetId}
+            </when>
+        </choose>
+    </select>
+
+    <!-- 更新消息状态（撤回） -->
+    <update id="updateStatus">
+        UPDATE message
+        SET status = #{status}
+        WHERE id = #{id}
+    </update>
+
+    <!-- 批量插入已读记录 -->
+    <insert id="batchInsertReadRecords">
+        INSERT INTO message_read (message_id, user_id)
+        VALUES
+        <foreach collection="messageIds" item="messageId" separator=",">
+            (#{messageId}, #{userId})
+        </foreach>
+        ON DUPLICATE KEY UPDATE read_time = CURRENT_TIMESTAMP
+    </insert>
+
+    <!-- 撤回消息 -->
+    <update id="recallMessage">
+        UPDATE message 
+        SET status = 0, 
+            recall_time = CURRENT_TIMESTAMP
+        WHERE id = #{messageId}
+          AND from_user_id = #{fromUserId}
+          AND status = 1
+    </update>
+
+</mapper>

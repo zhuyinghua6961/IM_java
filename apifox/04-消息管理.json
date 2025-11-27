@@ -1,0 +1,173 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "消息管理模块 API",
+    "description": "消息发送、历史记录、撤回（❌ 未实现）",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8082",
+      "description": "消息服务 - 本地开发环境"
+    }
+  ],
+  "tags": [
+    {
+      "name": "消息管理",
+      "description": "消息相关接口"
+    }
+  ],
+  "paths": {
+    "/api/message/history": {
+      "get": {
+        "tags": ["消息管理"],
+        "summary": "❌ 获取历史消息（未实现）",
+        "description": "获取指定会话的历史消息",
+        "security": [{"BearerAuth": []}],
+        "parameters": [
+          {
+            "name": "targetId",
+            "in": "query",
+            "required": true,
+            "schema": {"type": "integer"},
+            "description": "对方用户ID或群组ID",
+            "example": 2
+          },
+          {
+            "name": "chatType",
+            "in": "query",
+            "required": true,
+            "schema": {"type": "integer"},
+            "description": "1-单聊 2-群聊",
+            "example": 1
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {"type": "integer", "default": 1}
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "schema": {"type": "integer", "default": 20}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "查询成功",
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": 200,
+                  "data": {
+                    "total": 100,
+                    "list": [
+                      {
+                        "messageId": 123456,
+                        "fromUserId": 1,
+                        "fromUserName": "张三",
+                        "fromUserAvatar": "https://example.com/avatar.jpg",
+                        "msgType": 1,
+                        "content": "Hello",
+                        "url": null,
+                        "sendTime": "2024-01-01 12:00:00",
+                        "status": 1
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/message/recall": {
+      "post": {
+        "tags": ["消息管理"],
+        "summary": "❌ 撤回消息（未实现）",
+        "description": "撤回已发送的消息",
+        "security": [{"BearerAuth": []}],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["messageId"],
+                "properties": {
+                  "messageId": {"type": "integer", "example": 123456}
+                }
+              },
+              "examples": {
+                "撤回消息": {
+                  "value": {"messageId": 123456}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "撤回成功"
+          },
+          "400": {
+            "description": "撤回失败",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "超时": {
+                    "value": {
+                      "code": 3004,
+                      "message": "撤回时间已过"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/message/read": {
+      "post": {
+        "tags": ["消息管理"],
+        "summary": "❌ 标记消息已读（未实现）",
+        "description": "标记消息为已读状态",
+        "security": [{"BearerAuth": []}],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["messageIds"],
+                "properties": {
+                  "messageIds": {
+                    "type": "array",
+                    "items": {"type": "integer"},
+                    "example": [123456, 123457, 123458]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "标记成功"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    }
+  }
+}
