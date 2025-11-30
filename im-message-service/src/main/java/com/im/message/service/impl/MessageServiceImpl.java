@@ -104,8 +104,12 @@ public class MessageServiceImpl implements MessageService {
             log.info("单聊消息已缓存，将异步持久化: messageId={}", message.getId());
         } else {
             // 群聊：保持同步写库（群聊消息量大，需要额外优化，暂不使用异步）
-            messageMapper.insert(message);
-            log.info("群聊消息已同步写库: messageId={}", message.getId());
+            // 为群聊消息同样使用雪花ID，并通过Kafka+Redis异步持久化
+            message.setId(idGenerator.nextId());
+            message.setPersistStatus(RedisKeyConstant.PERSIST_STATUS_PENDING);
+
+            messageCacheService.cacheAndSendToKafka(message);
+            log.info("群聊消息已缓存，将异步持久化: messageId={}", message.getId());
         }
         
         // 4. 更新会话
@@ -251,12 +255,12 @@ public class MessageServiceImpl implements MessageService {
                 messageCacheService.markMessageAsRecalled(messageId, persistStatus);
                 log.info("单聊消息撤回成功（异步），messageId={}, persistStatus={}", messageId, persistStatus);
             } else {
-                // 群聊：保持同步撤回
-                int result = messageMapper.recallMessage(messageId, userId);
-                if (result == 0) {
-                    throw new BusinessException(ResultCode.BAD_REQUEST, "撤回消息失败，可能消息不存在或已被撤回");
-                }
-                log.info("群聊消息撤回成功（同步），messageId: {}", messageId);
+                // 群聊：保持同步撤回（改为通过Kafka+Redis异步撤回）
+                String persistStatus = message.getPersistStatus() != null ? 
+                    message.getPersistStatus() : RedisKeyConstant.PERSIST_STATUS_PERSISTED;
+
+                messageCacheService.markMessageAsRecalled(messageId, persistStatus);
+                log.info("群聊消息撤回成功（异步），messageId={}, persistStatus={}", messageId, persistStatus);
             }
             
             // 6. 发送撤回通知
