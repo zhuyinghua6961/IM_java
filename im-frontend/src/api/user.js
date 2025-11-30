@@ -53,3 +53,14 @@ export function searchUser(keyword) {
     params: { keyword }
   })
 }
+
+/**
+ * 发送短信验证码
+ */
+export function sendSmsCode(phone) {
+  return request({
+    url: '/user/sms/send',
+    method: 'post',
+    data: { phone }
+  })
+}

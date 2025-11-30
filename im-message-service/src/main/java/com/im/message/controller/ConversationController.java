@@ -95,10 +95,25 @@ public class ConversationController {
      * 删除会话
      */
     @DeleteMapping("/{conversationId}")
-    public Result<Void> deleteConversation(@PathVariable Long conversationId) {
-        log.info("删除会话: {}", conversationId);
+    public Result<Void> deleteConversation(@PathVariable String conversationId) {
+        Long userId = UserContext.getCurrentUserId();
+        log.info("删除会话: conversationId={}, userId={}", conversationId, userId);
         
-        // TODO: 后续实现真实的删除逻辑
+        // 判断conversationId格式：可能是纯数字ID，也可能是 "chatType-targetId" 格式
+        if (conversationId.contains("-")) {
+            // 格式: "chatType-targetId"
+            String[] parts = conversationId.split("-");
+            Integer chatType = Integer.valueOf(parts[0]);
+            Long targetId = Long.valueOf(parts[1]);
+            
+            log.info("解析会话参数: chatType={}, targetId={}", chatType, targetId);
+            conversationService.deleteConversationByUserAndTarget(userId, targetId, chatType);
+        } else {
+            // 格式: 纯数字ID
+            Long id = Long.valueOf(conversationId);
+            conversationService.deleteConversation(id, userId);
+        }
+        
         return Result.success();
     }
 }

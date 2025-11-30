@@ -316,14 +316,39 @@ public class GroupServiceImpl implements GroupService {
                 // 管理员/群主邀请
                 if (isInWhitelist) {
                     // 白名单用户直接加入
-                    GroupMember newMember = new GroupMember();
-                    newMember.setGroupId(groupId);
-                    newMember.setUserId(inviteeId);
-                    newMember.setRole(0); // 普通成员
-                    newMember.setJoinTime(LocalDateTime.now());
-                    newMember.setStatus(1);
-                    directJoinMembers.add(newMember);
-                    log.info("管理员邀请白名单用户，直接加入，inviteeId: {}", inviteeId);
+                    // 检查是否已存在成员记录（可能之前被移除过）
+                    GroupMember whitelistMember = groupMemberMapper.selectByGroupIdAndUserIdIncludeInactive(groupId, inviteeId);
+                    if (whitelistMember != null && whitelistMember.getStatus() == 0) {
+                        // 已存在但已退出，重新激活
+                        whitelistMember.setStatus(1);
+                        whitelistMember.setRole(0);
+                        whitelistMember.setJoinTime(LocalDateTime.now());
+                        whitelistMember.setUpdateTime(LocalDateTime.now());
+                        groupMemberMapper.updateById(whitelistMember);
+                        log.info("管理员邀请白名单用户，重新激活成员记录，inviteeId: {}", inviteeId);
+                        
+                        // 通知用户直接加入
+                        User inviterUser = userMapper.selectById(inviterId);
+                        String inviterName = inviterUser != null ? inviterUser.getNickname() : "未知用户";
+                        webSocketUtil.pushGroupJoinNotification(
+                            inviteeId,
+                            inviterId,
+                            inviterName,
+                            groupId,
+                            group.getGroupName()
+                        );
+                    } else if (whitelistMember == null) {
+                        // 不存在记录，添加到待插入列表
+                        GroupMember newMember = new GroupMember();
+                        newMember.setGroupId(groupId);
+                        newMember.setUserId(inviteeId);
+                        newMember.setRole(0); // 普通成员
+                        newMember.setJoinTime(LocalDateTime.now());
+                        newMember.setStatus(1);
+                        directJoinMembers.add(newMember);
+                        log.info("管理员邀请白名单用户，直接加入，inviteeId: {}", inviteeId);
+                    }
+                    // 如果whitelistMember存在且status=1，说明已经是群成员，跳过
                 } else {
                     // 非白名单用户发送邀请
                     GroupInvitation invitation = new GroupInvitation();
@@ -454,12 +479,28 @@ public class GroupServiceImpl implements GroupService {
         
         if (accept) {
             // 7. 同意：加入群组
-            GroupMember member = new GroupMember();
-            member.setGroupId(invitation.getGroupId());
-            member.setUserId(userId);
-            member.setRole(0); // 普通成员
-            member.setStatus(1);
-            groupMemberMapper.insert(member);
+            // 检查是否已存在成员记录（可能之前被移除过）
+            GroupMember existingMember = groupMemberMapper.selectByGroupIdAndUserIdIncludeInactive(invitation.getGroupId(), userId);
+            
+            if (existingMember != null) {
+                // 已存在记录，更新状态（重新激活）
+                existingMember.setStatus(1);
+                existingMember.setRole(0); // 重置为普通成员
+                existingMember.setJoinTime(LocalDateTime.now()); // 更新加入时间
+                existingMember.setUpdateTime(LocalDateTime.now());
+                groupMemberMapper.updateById(existingMember);
+                log.info("重新激活群成员记录，userId: {}, groupId: {}", userId, invitation.getGroupId());
+            } else {
+                // 不存在记录，插入新记录
+                GroupMember member = new GroupMember();
+                member.setGroupId(invitation.getGroupId());
+                member.setUserId(userId);
+                member.setRole(0); // 普通成员
+                member.setStatus(1);
+                member.setJoinTime(LocalDateTime.now());
+                groupMemberMapper.insert(member);
+                log.info("插入新群成员记录，userId: {}, groupId: {}", userId, invitation.getGroupId());
+            }
             
             // 更新邀请状态
             invitation.setStatus(2); // 已同意
@@ -737,13 +778,27 @@ public class GroupServiceImpl implements GroupService {
             
             if (isInWhitelist) {
                 // 白名单用户直接加入
-                GroupMember member = new GroupMember();
-                member.setGroupId(invitation.getGroupId());
-                member.setUserId(invitation.getInviteeId());
-                member.setRole(0); // 普通成员
-                member.setJoinTime(LocalDateTime.now());
-                member.setStatus(1);
-                groupMemberMapper.insert(member);
+                // 检查是否已存在成员记录
+                GroupMember existingMember = groupMemberMapper.selectByGroupIdAndUserIdIncludeInactive(
+                    invitation.getGroupId(), invitation.getInviteeId());
+                
+                if (existingMember != null) {
+                    // 已存在记录，更新状态
+                    existingMember.setStatus(1);
+                    existingMember.setRole(0);
+                    existingMember.setJoinTime(LocalDateTime.now());
+                    existingMember.setUpdateTime(LocalDateTime.now());
+                    groupMemberMapper.updateById(existingMember);
+                } else {
+                    // 不存在记录，插入新记录
+                    GroupMember member = new GroupMember();
+                    member.setGroupId(invitation.getGroupId());
+                    member.setUserId(invitation.getInviteeId());
+                    member.setRole(0); // 普通成员
+                    member.setJoinTime(LocalDateTime.now());
+                    member.setStatus(1);
+                    groupMemberMapper.insert(member);
+                }
                 
                 // 更新邀请状态为已同意
                 invitation.setStatus(2);
@@ -867,5 +922,126 @@ public class GroupServiceImpl implements GroupService {
         }
         
         log.info("群组解散成功，groupId: {}, 通知成员数量: {}", groupId, allMembers.size());
+    }
+    
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void removeMember(Long groupId, Long userId) {
+        // 1. 获取当前用户ID（操作者）
+        Long operatorId = UserContext.getCurrentUserId();
+        log.info("移除群成员，operatorId: {}, groupId: {}, targetUserId: {}", operatorId, groupId, userId);
+        
+        if (operatorId == null) {
+            throw new BusinessException(ResultCode.UNAUTHORIZED, "用户未登录");
+        }
+        
+        // 2. 查询群组是否存在
+        Group group = groupMapper.selectById(groupId);
+        if (group == null || group.getStatus() != 1) {
+            throw new BusinessException(ResultCode.BAD_REQUEST, "群组不存在或已解散");
+        }
+        
+        // 3. 验证操作者权限（必须是管理员或群主）
+        GroupMember operator = groupMemberMapper.selectByGroupIdAndUserId(groupId, operatorId);
+        if (operator == null || operator.getStatus() != 1 || operator.getRole() < 1) {
+            throw new BusinessException(ResultCode.FORBIDDEN, "只有管理员和群主可以移除成员");
+        }
+        
+        // 4. 查询目标用户的成员信息
+        GroupMember targetMember = groupMemberMapper.selectByGroupIdAndUserId(groupId, userId);
+        if (targetMember == null || targetMember.getStatus() != 1) {
+            throw new BusinessException(ResultCode.BAD_REQUEST, "目标用户不是群组成员");
+        }
+        
+        // 5. 权限检查
+        // 群主不能被移除
+        if (targetMember.getRole() == 2) {
+            throw new BusinessException(ResultCode.FORBIDDEN, "不能移除群主");
+        }
+        
+        // 管理员只能移除普通成员，不能移除其他管理员
+        if (operator.getRole() == 1 && targetMember.getRole() >= 1) {
+            throw new BusinessException(ResultCode.FORBIDDEN, "管理员只能移除普通成员");
+        }
+        
+        // 不能移除自己
+        if (userId.equals(operatorId)) {
+            throw new BusinessException(ResultCode.BAD_REQUEST, "不能移除自己，请使用退出群组功能");
+        }
+        
+        // 6. 移除成员（软删除）
+        targetMember.setStatus(0); // 设置为已退出状态
+        targetMember.setUpdateTime(LocalDateTime.now());
+        groupMemberMapper.updateById(targetMember);
+        
+        // 7. 获取被移除用户信息
+        User removedUser = userMapper.selectById(userId);
+        String removedUserName = removedUser != null ? removedUser.getNickname() : "未知用户";
+        
+        // 8. 通知被移除的用户
+        webSocketUtil.pushGroupRemoveNotification(
+            userId,
+            operatorId,
+            removedUserName,
+            groupId,
+            group.getGroupName()
+        );
+        
+        log.info("移除群成员成功，operatorId: {}, userId: {}, groupId: {}", operatorId, userId, groupId);
+    }
+    
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public GroupVO updateGroup(Long groupId, GroupDTO groupDTO) {
+        // 1. 获取当前用户ID（操作者）
+        Long currentUserId = UserContext.getCurrentUserId();
+        log.info("修改群组信息，operatorId: {}, groupId: {}", currentUserId, groupId);
+        
+        if (currentUserId == null) {
+            throw new BusinessException(ResultCode.UNAUTHORIZED, "用户未登录");
+        }
+        
+        // 2. 查询群组是否存在
+        Group group = groupMapper.selectById(groupId);
+        if (group == null || group.getStatus() != 1) {
+            throw new BusinessException(ResultCode.BAD_REQUEST, "群组不存在或已解散");
+        }
+        
+        // 3. 验证操作者权限（只有群主可以修改群信息）
+        GroupMember operator = groupMemberMapper.selectByGroupIdAndUserId(groupId, currentUserId);
+        if (operator == null || operator.getStatus() != 1 || operator.getRole() != 2) {
+            throw new BusinessException(ResultCode.FORBIDDEN, "只有群主可以修改群组信息");
+        }
+        
+        // 4. 更新群组信息
+        if (groupDTO.getGroupName() != null && !groupDTO.getGroupName().trim().isEmpty()) {
+            group.setGroupName(groupDTO.getGroupName());
+        }
+        
+        if (groupDTO.getAvatar() != null) {
+            group.setAvatar(groupDTO.getAvatar());
+        }
+        
+        if (groupDTO.getNotice() != null) {
+            group.setNotice(groupDTO.getNotice());
+        }
+        
+        if (groupDTO.getMaxMembers() != null && groupDTO.getMaxMembers() > 0) {
+            // 检查最大成员数是否小于当前成员数
+            int currentMemberCount = groupMemberMapper.countByGroupId(groupId);
+            if (groupDTO.getMaxMembers() < currentMemberCount) {
+                throw new BusinessException(ResultCode.BAD_REQUEST, 
+                    "最大成员数不能小于当前成员数（" + currentMemberCount + "）");
+            }
+            group.setMaxMembers(groupDTO.getMaxMembers());
+        }
+        
+        group.setUpdateTime(LocalDateTime.now());
+        groupMapper.updateById(group);
+        
+        log.info("群组信息修改成功，groupId: {}", groupId);
+        
+        // 5. 返回更新后的群组信息
+        return getGroupById(groupId);
     }
 }

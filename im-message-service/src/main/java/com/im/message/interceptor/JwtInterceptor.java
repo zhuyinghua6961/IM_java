@@ -32,7 +32,7 @@ public class JwtInterceptor implements HandlerInterceptor {
                 // 3. 解析Token获取用户ID
                 Long userId = JwtUtil.getUserIdFromToken(token);
                 
-                log.debug("Token验证通过，userId: {}", userId);
+                // log.debug("Token验证通过，userId: {}", userId);  // 频繁请求，已关闭日志
                 
                 // 4. 将用户ID存入ThreadLocal
                 UserContext.setCurrentUserId(userId);
@@ -50,6 +50,6 @@ public class JwtInterceptor implements HandlerInterceptor {
     public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) {
         // 请求完成后清除ThreadLocal，防止内存泄漏
         UserContext.clear();
-        log.debug("JWT拦截器：清除当前用户信息");
+        // log.debug("JWT拦截器：清除当前用户信息");  // 频繁请求，已关闭日志
     }
 }

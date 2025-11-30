@@ -54,6 +54,16 @@ public class GroupController {
         GroupVO groupVO = groupService.getGroupById(groupId);
         return Result.success(groupVO);
     }
+    
+    /**
+     * 修改群组信息（群主专用）
+     */
+    @PostMapping("/{groupId}/update")
+    public Result<GroupVO> updateGroup(@PathVariable("groupId") Long groupId,
+                                      @RequestBody GroupDTO groupDTO) {
+        GroupVO groupVO = groupService.updateGroup(groupId, groupDTO);
+        return Result.success(groupVO);
+    }
 
     /**
      * 邀请用户加入群组
@@ -136,6 +146,17 @@ public class GroupController {
     @PostMapping("/{groupId}/dissolve")
     public Result<Void> dissolveGroup(@PathVariable("groupId") Long groupId) {
         groupService.dissolveGroup(groupId);
+        return Result.success();
+    }
+    
+    /**
+     * 移除群成员（管理员/群主专用）
+     */
+    @PostMapping("/{groupId}/remove")
+    public Result<Void> removeMember(@PathVariable("groupId") Long groupId,
+                                     @RequestBody Map<String, Object> request) {
+        Long userId = Long.valueOf(request.get("userId").toString());
+        groupService.removeMember(groupId, userId);
         return Result.success();
     }
 }

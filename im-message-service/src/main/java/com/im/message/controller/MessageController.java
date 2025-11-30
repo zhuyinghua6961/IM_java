@@ -67,4 +67,16 @@ public class MessageController {
         messageService.markMessagesAsRead(messageIds, userId);
         return Result.success();
     }
+    
+    /**
+     * 删除单条消息
+     */
+    @DeleteMapping("/{messageId}")
+    public Result<Void> deleteMessage(@PathVariable Long messageId) {
+        Long userId = UserContext.getCurrentUserId();
+        log.info("删除消息: messageId={}, userId={}", messageId, userId);
+        
+        messageService.deleteMessage(messageId, userId);
+        return Result.success();
+    }
 }

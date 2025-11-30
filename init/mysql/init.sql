@@ -1,6 +1,7 @@
 -- IM Chat System Database Initialization Script
 -- 创建时间: 2024-01-01
--- 数据库版本: 1.0.0
+-- 最后更新: 2025-11-27
+-- 数据库版本: 2.0.0
 
 SET NAMES utf8mb4;
 SET FOREIGN_KEY_CHECKS = 0;
@@ -95,11 +96,30 @@ CREATE TABLE `group_member` (
   `nickname` VARCHAR(50) DEFAULT NULL COMMENT '群昵称',
   `join_time` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '加入时间',
   `status` TINYINT DEFAULT 1 COMMENT '状态 0-已退出 1-正常',
+  `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_group_user` (`group_id`, `user_id`),
   KEY `idx_group_id` (`group_id`),
   KEY `idx_user_id` (`user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='群成员表';
+
+-- ----------------------------
+-- 群组邀请表
+-- ----------------------------
+DROP TABLE IF EXISTS `group_invitation`;
+CREATE TABLE `group_invitation` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '邀请ID',
+  `group_id` BIGINT NOT NULL COMMENT '群组ID',
+  `inviter_id` BIGINT NOT NULL COMMENT '邀请人ID',
+  `invitee_id` BIGINT NOT NULL COMMENT '被邀请人ID',
+  `status` TINYINT DEFAULT 1 COMMENT '状态 0-已拒绝 1-待处理 2-已同意 3-待审批 4-审批拒绝',
+  `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `expire_time` DATETIME DEFAULT NULL COMMENT '过期时间',
+  `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  KEY `idx_invitee_status` (`invitee_id`, `status`),
+  KEY `idx_group_id` (`group_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='群组邀请表';
 
 -- ----------------------------
 -- 消息表
@@ -138,6 +158,21 @@ CREATE TABLE `message_read` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='消息已读表';
 
 -- ----------------------------
+-- 消息删除记录表（单向删除）
+-- ----------------------------
+DROP TABLE IF EXISTS `message_delete`;
+CREATE TABLE `message_delete` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `user_id` BIGINT NOT NULL COMMENT '删除消息的用户ID',
+  `message_id` BIGINT NOT NULL COMMENT '被删除的消息ID',
+  `delete_time` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '删除时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_user_message` (`user_id`, `message_id`),
+  KEY `idx_user_id` (`user_id`),
+  KEY `idx_message_id` (`message_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='消息删除记录表';
+
+-- ----------------------------
 -- 会话表
 -- ----------------------------
 DROP TABLE IF EXISTS `conversation`;
@@ -150,6 +185,7 @@ CREATE TABLE `conversation` (
   `unread_count` INT DEFAULT 0 COMMENT '未读数',
   `top` INT NOT NULL DEFAULT 0 COMMENT '是否置顶 0-否 1-是',
   `hidden` INT NOT NULL DEFAULT 0 COMMENT '是否隐藏 0-否 1-是',
+  `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_user_target` (`user_id`, `target_id`, `chat_type`),

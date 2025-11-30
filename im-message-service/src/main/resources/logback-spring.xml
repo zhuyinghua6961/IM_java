@@ -42,10 +42,25 @@
         </rollingPolicy>
     </appender>
 
-    <logger name="com.im" level="DEBUG"/>
-    <logger name="org.springframework" level="INFO"/>
+    <!-- 应用业务日志 -->
+    <logger name="com.im.message.controller" level="INFO"/>
+    <logger name="com.im.message.service" level="INFO"/>
+    
+    <!-- 框架日志 -->
+    <logger name="org.springframework" level="WARN"/>
+    <logger name="org.springframework.web" level="WARN"/>
+    <logger name="org.springframework.messaging" level="WARN"/>
+    <logger name="org.springframework.websocket" level="WARN"/>
+    
+    <!-- MyBatis日志 -->
+    <logger name="org.mybatis" level="WARN"/>
+    <logger name="com.im.message.mapper" level="WARN"/>
+    
+    <!-- 数据库连接池 -->
+    <logger name="com.alibaba.druid" level="WARN"/>
+    <logger name="druid.sql" level="WARN"/>
 
-    <root level="INFO">
+    <root level="WARN">
         <appender-ref ref="CONSOLE"/>
         <appender-ref ref="FILE"/>
         <appender-ref ref="ERROR"/>

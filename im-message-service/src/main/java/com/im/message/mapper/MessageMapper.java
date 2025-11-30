@@ -51,4 +51,30 @@ public interface MessageMapper {
      */
     int recallMessage(@Param("messageId") Long messageId, 
                      @Param("fromUserId") Long fromUserId);
+    
+    /**
+     * 删除用户的聊天记录
+     * @param userId 用户ID
+     * @param targetId 对方ID（用户ID或群组ID）
+     * @param chatType 聊天类型
+     */
+    int deleteUserMessages(@Param("userId") Long userId,
+                          @Param("targetId") Long targetId,
+                          @Param("chatType") Integer chatType);
+    
+    /**
+     * 根据ID删除消息（物理删除，用于撤回补偿）
+     */
+    int deleteById(@Param("id") Long id);
+    
+    /**
+     * 更新消息（用于修改状态等）
+     */
+    int updateById(Message message);
+    
+    /**
+     * 更新消息撤回状态
+     */
+    int updateRecallStatus(@Param("messageId") Long messageId,
+                          @Param("recallTime") Long recallTime);
 }

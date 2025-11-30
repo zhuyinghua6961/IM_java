@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * 消息通知服务实现
@@ -28,7 +29,8 @@ public class MessageNotificationServiceImpl implements MessageNotificationServic
         
         MessageNotificationDTO notification = MessageNotificationDTO.builder()
                 .type(MessageNotificationDTO.TYPE_MESSAGE_RECALLED)
-                .messageId(messageId)
+                // 以字符串形式下发 messageId
+                .messageId(String.valueOf(messageId))
                 .fromUserId(fromUserId)
                 .targetId(targetId)
                 .chatType(chatType)
@@ -48,7 +50,10 @@ public class MessageNotificationServiceImpl implements MessageNotificationServic
         
         MessageNotificationDTO notification = MessageNotificationDTO.builder()
                 .type(MessageNotificationDTO.TYPE_MESSAGES_READ)
-                .messageIds(messageIds)
+                // 将 Long 列表转换为字符串列表
+                .messageIds(messageIds.stream()
+                        .map(String::valueOf)
+                        .collect(Collectors.toList()))
                 .fromUserId(userId)
                 .targetId(targetId)
                 .chatType(chatType)
@@ -67,7 +72,8 @@ public class MessageNotificationServiceImpl implements MessageNotificationServic
         
         MessageNotificationDTO notification = MessageNotificationDTO.builder()
                 .type(MessageNotificationDTO.TYPE_NEW_MESSAGE)
-                .messageId(message.getId())
+                // 以字符串形式下发 messageId
+                .messageId(String.valueOf(message.getId()))
                 .fromUserId(message.getFromUserId())
                 .targetId(message.getToId())
                 .chatType(message.getChatType())

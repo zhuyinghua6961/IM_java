@@ -11,7 +11,8 @@ class WebSocketClient {
     this.reconnectAttempts = 0
     this.maxReconnectAttempts = 5
     this.reconnectInterval = 3000
-    this.messageCallbacks = new Map()
+    this.pendingCallbacks = [] // 待处理的消息回调队列
+    this.sessionId = null // 固定的sessionId，连接时生成一次
   }
 
   // 连接WebSocket
@@ -33,9 +34,20 @@ class WebSocketClient {
     this.stompClient.connect(
       {},
       (frame) => {
-        console.log('WebSocket connected:', frame)
+        console.log('✅ WebSocket connected successfully')
         this.connected = true
         this.reconnectAttempts = 0
+        
+        // 从STOMP响应头获取真实的session ID
+        // 这个session ID就是Spring WebSocket内部使用的ID
+        const headers = frame.headers || {}
+        this.sessionId = headers.session || headers['session-id']
+        console.log('🔵 WebSocket sessionId:', this.sessionId)
+        console.log('🔵 All headers:', JSON.stringify(headers))
+        
+        if (!this.sessionId) {
+          console.error('❌ 无法获取sessionId，ACK可能无法接收')
+        }
         
         // 订阅消息
         this.subscribeToMessages()
@@ -69,7 +81,8 @@ class WebSocketClient {
       // 添加到消息列表
       const conversationId = `${data.chatType}-${data.fromUserId}`
       const messageObj = {
-        id: data.messageId,
+        // 确保id为字符串，避免JS大整数精度问题
+        id: String(data.messageId),
         fromUserId: data.fromUserId,
         content: data.content,
         msgType: data.msgType,
@@ -88,21 +101,32 @@ class WebSocketClient {
       this.updateConversationUnread(conversationId, data.fromUserId)
     })
 
-    // 订阅ACK确认
-    this.stompClient.subscribe(`/queue/ack-${this.getSessionId()}`, (ack) => {
+    // 订阅ACK确认 - 使用session-specific的queue
+    const ackQueue = `/queue/ack-${this.sessionId}`
+    console.log('🔵 订阅ACK队列:', ackQueue)
+    this.stompClient.subscribe(ackQueue, (ack) => {
       const data = JSON.parse(ack.body)
-      console.log('消息发送成功:', data)
+      console.log('🟢 收到ACK确认:', data)
+      console.log('🟢 当前待处理回调数量:', this.pendingCallbacks ? this.pendingCallbacks.length : 0)
       
-      // 执行回调
-      const callback = this.messageCallbacks.get(data.messageId)
-      if (callback) {
-        callback(null, data)
-        this.messageCallbacks.delete(data.messageId)
+      // 从待处理队列中取出第一个回调并执行
+      // 因为消息是按顺序发送和确认的，所以使用FIFO队列
+      if (this.pendingCallbacks && this.pendingCallbacks.length > 0) {
+        const pending = this.pendingCallbacks.shift()
+        console.log('🟢 执行回调，剩余回调数:', this.pendingCallbacks.length)
+        if (pending.callback) {
+          pending.callback(null, data)
+          console.log('✅ ACK回调已执行, messageId:', data.messageId)
+        }
+      } else {
+        console.warn('⚠️ 收到ACK但没有待处理的回调')
       }
     })
 
-    // 订阅错误消息
-    this.stompClient.subscribe(`/queue/error-${this.getSessionId()}`, (error) => {
+    // 订阅错误消息 - 使用session-specific的queue
+    const errorQueue = `/queue/error-${this.sessionId}`
+    console.log('🔵 订阅错误队列:', errorQueue)
+    this.stompClient.subscribe(errorQueue, (error) => {
       const data = JSON.parse(error.body)
       console.error('WebSocket错误:', data)
       ElMessage.error(data.message)
@@ -118,14 +142,29 @@ class WebSocketClient {
     }
 
     try {
-      // 生成临时消息ID用于回调
-      const tempId = Date.now()
+      // 生成临时消息ID，并添加到回调映射
+      // 注意：由于我们无法预知后端生成的messageId，
+      // 我们需要在ACK时通过其他方式匹配回调
+      // 这里先存储一个待处理的回调队列
+      const tempId = 'temp-' + Date.now()
       if (callback) {
-        this.messageCallbacks.set(tempId, callback)
+        // 使用一个特殊的key来存储等待ACK的回调
+        if (!this.pendingCallbacks) {
+          this.pendingCallbacks = []
+        }
+        this.pendingCallbacks.push({
+          tempId: tempId,
+          callback: callback,
+          timestamp: Date.now()
+        })
+        console.log('🔵 回调已加入队列, 当前队列长度:', this.pendingCallbacks.length)
       }
 
       this.stompClient.send('/app/message', {}, JSON.stringify(messageData))
       console.log('发送消息:', messageData)
+      
+      // 返回tempId供调用者使用
+      return tempId
     } catch (error) {
       console.error('发送消息失败:', error)
       if (callback) callback(error)
@@ -155,9 +194,14 @@ class WebSocketClient {
     }
   }
 
-  // 获取会话ID（简化版）
+  // 获取会话ID（返回固定的sessionId）
   getSessionId() {
-    return 'session-' + Date.now()
+    if (!this.sessionId) {
+      // 如果还没有生成，先生成一个（理论上不应该走到这里）
+      this.sessionId = 'session-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9)
+      console.warn('⚠️ sessionId未初始化，临时生成:', this.sessionId)
+    }
+    return this.sessionId
   }
 
   // 更新会话未读数

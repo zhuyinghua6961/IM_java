@@ -79,7 +79,7 @@ class MessageSyncManager {
    * WebSocket连接成功
    */
   onWebSocketConnected() {
-    console.log('MessageSync: WebSocket连接成功')
+    // console.log('MessageSync: WebSocket连接成功')
     this.wsConnected = true
     this.stopPolling()
   }
@@ -88,7 +88,7 @@ class MessageSyncManager {
    * WebSocket断开连接
    */
   onWebSocketDisconnected() {
-    console.log('MessageSync: WebSocket断开，启用轮询备用')
+    // console.log('MessageSync: WebSocket断开，启用轮询备用')
     this.wsConnected = false
     this.startPolling()
   }
@@ -118,7 +118,7 @@ class MessageSyncManager {
    * 处理WebSocket消息
    */
   handleWebSocketMessage(data) {
-    console.log('MessageSync: 收到WebSocket消息', data)
+    // console.log('MessageSync: 收到WebSocket消息', data)
     
     switch (data.type) {
       case 'NEW_MESSAGE':
@@ -156,7 +156,7 @@ class MessageSyncManager {
    * 处理消息撤回
    */
   handleMessageRecalled(data) {
-    console.log('MessageSync: 处理消息撤回', data)
+    // console.log('MessageSync: 处理消息撤回', data)
     
     if (this.messageUpdateCallback) {
       this.messageUpdateCallback('MESSAGE_RECALLED', {
@@ -220,7 +220,7 @@ class MessageSyncManager {
         this.syncMessages()
       }, interval)
       
-      console.log(`MessageSync: 启动轮询，间隔${interval}ms`)
+      // console.log(`MessageSync: 启动轮询，间隔${interval}ms`)
     }
   }
   
@@ -231,7 +231,7 @@ class MessageSyncManager {
     if (this.pollingTimer) {
       clearInterval(this.pollingTimer)
       this.pollingTimer = null
-      console.log('MessageSync: 停止轮询')
+      // console.log('MessageSync: 停止轮询')
     }
   }
   
@@ -246,7 +246,7 @@ class MessageSyncManager {
         this.syncMessages()
       }, interval)
       
-      console.log(`MessageSync: 重启轮询，间隔${interval}ms`)
+      // console.log(`MessageSync: 重启轮询，间隔${interval}ms`)
     }
   }
   
@@ -270,7 +270,7 @@ class MessageSyncManager {
     if (!this.currentConversation) return
     
     try {
-      console.log('MessageSync: 轮询同步消息')
+      // console.log('MessageSync: 轮询同步消息')
       
       if (this.messageUpdateCallback) {
         this.messageUpdateCallback('SYNC_MESSAGES', {

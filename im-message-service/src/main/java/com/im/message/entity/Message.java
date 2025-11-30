@@ -1,10 +1,13 @@
 package com.im.message.entity;
 
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
 import lombok.Data;
 import java.time.LocalDateTime;
 
 @Data
 public class Message {
+    @JsonSerialize(using = ToStringSerializer.class)
     private Long id;
     private Long fromUserId;
     private Long toId;
@@ -15,4 +18,5 @@ public class Message {
     private Integer status;
     private LocalDateTime sendTime;
     private LocalDateTime recallTime;
+    private String persistStatus; // 持久化状态：PENDING-待持久化, PERSISTED-已持久化
 }

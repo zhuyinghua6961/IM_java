@@ -21,6 +21,12 @@ public class ConversationServiceImpl implements ConversationService {
     @Autowired
     private ConversationMapper conversationMapper;
     
+    @Autowired
+    private com.im.message.mapper.MessageMapper messageMapper;
+    
+    @Autowired
+    private com.im.message.mapper.MessageDeleteMapper messageDeleteMapper;
+    
     @Override
     public List<ConversationVO> getConversationList(Long userId) {
         log.info("获取会话列表，userId: {}", userId);
@@ -132,5 +138,89 @@ public class ConversationServiceImpl implements ConversationService {
     public void showConversation(Long userId, Long targetId, Integer chatType) {
         log.info("显示会话，userId: {}, targetId: {}, chatType: {}", userId, targetId, chatType);
         conversationMapper.showConversationByUserAndTarget(userId, targetId, chatType);
+    }
+    
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void deleteConversation(Long conversationId, Long userId) {
+        log.info("删除会话，conversationId: {}, userId: {}", conversationId, userId);
+        
+        // 1. 验证会话是否存在且属于当前用户
+        Conversation conversation = conversationMapper.selectById(conversationId);
+        if (conversation == null) {
+            throw new BusinessException(ResultCode.NOT_FOUND, "会话不存在");
+        }
+        
+        if (!conversation.getUserId().equals(userId)) {
+            throw new BusinessException(ResultCode.FORBIDDEN, "无权删除此会话");
+        }
+        
+        // 2. 查询该会话的所有消息ID
+        List<com.im.message.entity.Message> messages = messageMapper.selectHistoryMessages(
+            userId, 
+            conversation.getTargetId(), 
+            conversation.getChatType(), 
+            0, 
+            Integer.MAX_VALUE
+        );
+        
+        // 3. 批量插入删除记录
+        if (!messages.isEmpty()) {
+            List<com.im.message.entity.MessageDelete> deleteRecords = messages.stream()
+                .map(msg -> com.im.message.entity.MessageDelete.builder()
+                    .userId(userId)
+                    .messageId(msg.getId())
+                    .build())
+                .collect(java.util.stream.Collectors.toList());
+            
+            messageDeleteMapper.batchInsert(deleteRecords);
+            log.info("标记 {} 条消息为已删除", deleteRecords.size());
+        }
+        
+        // 4. 删除会话记录
+        int result = conversationMapper.deleteById(conversationId);
+        if (result > 0) {
+            log.info("删除会话成功，conversationId: {}, 标记了 {} 条消息", 
+                conversationId, messages.size());
+        } else {
+            log.warn("删除会话失败，conversationId: {}", conversationId);
+            throw new BusinessException(ResultCode.BAD_REQUEST, "删除会话失败");
+        }
+    }
+    
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void deleteConversationByUserAndTarget(Long userId, Long targetId, Integer chatType) {
+        log.info("根据用户和目标删除会话，userId: {}, targetId: {}, chatType: {}", userId, targetId, chatType);
+        
+        // 查找会话
+        Conversation conversation = conversationMapper.selectByUserIdAndTarget(userId, targetId, chatType);
+        if (conversation != null) {
+            // 查询该会话的所有消息
+            List<com.im.message.entity.Message> messages = messageMapper.selectHistoryMessages(
+                userId, targetId, chatType, 0, Integer.MAX_VALUE
+            );
+            
+            // 批量插入删除记录
+            if (!messages.isEmpty()) {
+                List<com.im.message.entity.MessageDelete> deleteRecords = messages.stream()
+                    .map(msg -> com.im.message.entity.MessageDelete.builder()
+                        .userId(userId)
+                        .messageId(msg.getId())
+                        .build())
+                    .collect(java.util.stream.Collectors.toList());
+                
+                messageDeleteMapper.batchInsert(deleteRecords);
+                log.info("标记 {} 条消息为已删除", deleteRecords.size());
+            }
+            
+            // 删除会话
+            conversationMapper.deleteById(conversation.getId());
+            log.info("删除会话成功，conversationId: {}, 标记了 {} 条消息", 
+                conversation.getId(), messages.size());
+        } else {
+            log.warn("未找到要删除的会话，userId: {}, targetId: {}, chatType: {}", userId, targetId, chatType);
+            throw new BusinessException(ResultCode.NOT_FOUND, "会话不存在");
+        }
     }
 }

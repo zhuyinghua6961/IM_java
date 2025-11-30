@@ -39,4 +39,11 @@ public interface MessageService {
      * @param userId 当前用户ID
      */
     void markMessagesAsRead(List<Long> messageIds, Long userId);
+    
+    /**
+     * 删除单条消息（仅对当前用户生效）
+     * @param messageId 消息ID
+     * @param userId 当前用户ID
+     */
+    void deleteMessage(Long messageId, Long userId);
 }

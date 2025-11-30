@@ -18,14 +18,14 @@ public class MessageNotificationDTO {
     private String type;
     
     /**
-     * 消息ID
+     * 消息ID（以字符串形式返回给前端，避免JS精度丢失）
      */
-    private Long messageId;
+    private String messageId;
     
     /**
-     * 消息ID列表（批量操作时使用）
+     * 消息ID列表（批量操作时使用，字符串形式）
      */
-    private List<Long> messageIds;
+    private List<String> messageIds;
     
     /**
      * 会话ID

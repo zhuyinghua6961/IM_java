@@ -27,9 +27,16 @@ mybatis:
   type-aliases-package: com.im.user.entity
   configuration:
     map-underscore-to-camel-case: true
+    # log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl  # 关闭SQL详细日志
 
 # 日志配置
 logging:
+  level:
+    root: WARN
+    com.im.user: INFO
+    org.springframework.web: WARN
+    org.mybatis: WARN
+    com.alibaba.druid: WARN
   charset:
     console: UTF-8
     file: UTF-8

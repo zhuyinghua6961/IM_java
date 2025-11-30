@@ -131,4 +131,10 @@
         WHERE id = #{id}
     </update>
 
+    <!-- 删除会话 -->
+    <delete id="deleteById">
+        DELETE FROM conversation
+        WHERE id = #{id}
+    </delete>
+
 </mapper>

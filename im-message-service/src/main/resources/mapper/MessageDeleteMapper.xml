@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.im.message.mapper.MessageDeleteMapper">
+
+    <resultMap id="BaseResultMap" type="com.im.message.entity.MessageDelete">
+        <id column="id" property="id"/>
+        <result column="user_id" property="userId"/>
+        <result column="message_id" property="messageId"/>
+        <result column="delete_time" property="deleteTime"/>
+    </resultMap>
+
+    <!-- 插入删除记录 -->
+    <insert id="insert" parameterType="com.im.message.entity.MessageDelete">
+        INSERT INTO message_delete (user_id, message_id)
+        VALUES (#{userId}, #{messageId})
+        ON DUPLICATE KEY UPDATE delete_time = CURRENT_TIMESTAMP
+    </insert>
+
+    <!-- 批量插入删除记录 -->
+    <insert id="batchInsert">
+        INSERT INTO message_delete (user_id, message_id)
+        VALUES
+        <foreach collection="list" item="item" separator=",">
+            (#{item.userId}, #{item.messageId})
+        </foreach>
+        ON DUPLICATE KEY UPDATE delete_time = CURRENT_TIMESTAMP
+    </insert>
+
+    <!-- 查询用户删除的消息ID列表 -->
+    <select id="selectDeletedMessageIds" resultType="java.lang.Long">
+        SELECT DISTINCT md.message_id
+        FROM message_delete md
+        INNER JOIN message m ON md.message_id = m.id
+        WHERE md.user_id = #{userId}
+        <if test="chatType == 1">
+            AND m.chat_type = 1
+            AND ((m.from_user_id = #{userId} AND m.to_id = #{targetId})
+                 OR (m.from_user_id = #{targetId} AND m.to_id = #{userId}))
+        </if>
+        <if test="chatType == 2">
+            AND m.chat_type = 2
+            AND m.to_id = #{targetId}
+        </if>
+    </select>
+
+    <!-- 检查消息是否被用户删除 -->
+    <select id="checkDeleted" resultType="int">
+        SELECT COUNT(1)
+        FROM message_delete
+        WHERE user_id = #{userId}
+          AND message_id = #{messageId}
+    </select>
+    
+    <!-- 查询用户对某条消息的删除记录 -->
+    <select id="selectByUserAndMessage" resultMap="BaseResultMap">
+        SELECT *
+        FROM message_delete
+        WHERE user_id = #{userId}
+          AND message_id = #{messageId}
+        LIMIT 1
+    </select>
+
+</mapper>

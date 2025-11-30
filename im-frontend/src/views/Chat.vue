@@ -116,7 +116,8 @@
               :key="msg.id"
               class="message-item"
               :class="{ 'is-mine': msg.fromUserId === currentUserId }"
-              @contextmenu.prevent="showMessageMenu($event, msg)"
+              @mouseenter="hoveredMessageId = msg.id"
+              @mouseleave="hoveredMessageId = null"
             >
               <el-avatar :size="40" :src="msg.avatar">
                 {{ msg.nickname?.charAt(0) }}
@@ -136,18 +137,31 @@
                   </template>
                   <template v-else>
                     {{ msg.content }}
-                    <!-- 撤回按钮（仅自己的消息且5分钟内） -->
+                    <!-- 悬停操作菜单 -->
                     <div 
-                      v-if="msg.fromUserId === currentUserId && canRecall(msg)" 
+                      v-if="hoveredMessageId === msg.id && !isRecalledMessage(msg) && !isSendingMessage(msg)" 
                       class="message-actions"
                     >
+                      <!-- 撤回按钮（仅自己的消息且5分钟内） -->
                       <el-button 
+                        v-if="msg.fromUserId === currentUserId && canRecall(msg)"
                         text 
                         size="small" 
                         @click="recallMessage(msg)"
-                        class="recall-btn"
+                        class="action-btn"
+                        title="撤回消息"
                       >
                         撤回
+                      </el-button>
+                      <!-- 删除按钮（所有消息都可以删除） -->
+                      <el-button 
+                        text 
+                        size="small" 
+                        @click="deleteMessage(msg)"
+                        class="action-btn delete-btn"
+                        title="删除消息"
+                      >
+                        删除
                       </el-button>
                     </div>
                   </template>
@@ -194,6 +208,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { deleteMessage as deleteMessageApi } from '@/api/message'
 import { 
   Search, 
   Plus, 
@@ -222,6 +237,7 @@ const selectedConv = ref(null)
 const inputMessage = ref('')
 const messages = ref([])
 const messageScrollbar = ref(null)
+const hoveredMessageId = ref(null) // 当前悬停的消息ID
 
 // 会话列表宽度控制
 const conversationListWidth = ref(280)
@@ -444,7 +460,8 @@ const loadHistoryMessages = async () => {
           }
           
           return {
-            id: msg.id,
+            // 确保id为字符串，避免JS大整数精度问题
+            id: String(msg.id),
             fromUserId: msg.fromUserId,
             content: msg.content,
             msgType: msg.msgType,
@@ -634,9 +651,12 @@ const sendMessage = () => {
     messageData.groupId = selectedConv.value.targetId
   }
   
+  // 生成临时ID
+  const tempId = 'temp-' + Date.now()
+  
   // 先添加到本地消息列表（显示发送中状态）
   const tempMessage = {
-    id: 'temp-' + Date.now(),
+    id: tempId,
     fromUserId: currentUserId.value,
     content: messageData.content,
     msgType: 1,
@@ -648,15 +668,43 @@ const sendMessage = () => {
   messages.value.push(tempMessage)
   
   // 清空输入框
-  const messageContent = inputMessage.value
   inputMessage.value = ''
   
   // 检查WebSocket连接状态
   console.log('WebSocket连接状态:', wsClient.isConnected())
   console.log('准备发送消息:', messageData)
   
-  // 发送WebSocket消息
-  wsClient.sendMessage(messageData)
+  // 发送WebSocket消息，并处理ACK
+  console.log('🔵 开始发送消息，临时ID:', tempId)
+  wsClient.sendMessage(messageData, (error, ackData) => {
+    console.log('🔵 收到ACK回调', { error, ackData, tempId })
+    
+    if (error) {
+      console.error('❌ 消息发送失败:', error)
+      // 标记消息为发送失败
+      const msgIndex = messages.value.findIndex(m => m.id === tempId)
+      if (msgIndex !== -1) {
+        messages.value[msgIndex].status = -1 // -1-发送失败
+      }
+      return
+    }
+    
+    // 收到ACK，用真实ID替换临时ID
+    console.log('🔍 查找临时消息:', tempId, '当前消息列表:', messages.value.map(m => ({ id: m.id, content: m.content })))
+    const msgIndex = messages.value.findIndex(m => m.id === tempId)
+    console.log('🔍 找到索引:', msgIndex)
+    
+    if (msgIndex !== -1) {
+      const oldId = messages.value[msgIndex].id
+      // ACK中的messageId也转为字符串
+      messages.value[msgIndex].id = String(ackData.messageId)
+      messages.value[msgIndex].status = 1 // 1-发送成功
+      console.log(`✅ 消息ID已更新: ${oldId} -> ${ackData.messageId}`)
+      console.log('✅ 更新后的消息:', messages.value[msgIndex])
+    } else {
+      console.error('❌ 未找到临时消息:', tempId)
+    }
+  })
   
   // 滚动到底部
   scrollToBottom()
@@ -757,10 +805,16 @@ const handleConvAction = async ({ action, conv }) => {
         }
         break
       case 'delete':
-        await ElMessageBox.confirm('确定要删除这个会话吗？删除后无法恢复。', '确认删除', {
+        // 根据聊天类型显示不同的提示
+        const deleteMessage = conv.chatType === 1 
+          ? '确定要删除这个会话吗？\n⚠️ 删除后你将看不到所有聊天记录，但对方不受影响。'
+          : '确定要删除这个会话吗？\n删除后会话和聊天记录将从你的列表中消失。'
+        
+        await ElMessageBox.confirm(deleteMessage, '确认删除', {
           confirmButtonText: '删除',
           cancelButtonText: '取消',
-          type: 'warning'
+          type: 'warning',
+          dangerouslyUseHTMLString: false
         })
         await deleteConversation(conv.id)
         // 从列表中移除删除的会话
@@ -852,11 +906,30 @@ const recallMessage = async (message) => {
   }
 }
 
-// 显示消息右键菜单
-const showMessageMenu = (event, message) => {
-  // 阻止默认右键菜单
-  event.preventDefault()
-  // 这里可以添加自定义右键菜单逻辑
+// 删除消息
+const deleteMessage = async (message) => {
+  try {
+    await ElMessageBox.confirm('删除后仅自己不可见，对方仍然可以看到。确定要删除这条消息吗？', '删除消息', {
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+    
+    await deleteMessageApi(message.id)
+    
+    // 从本地消息列表中移除
+    const index = messages.value.findIndex(m => m.id === message.id)
+    if (index !== -1) {
+      messages.value.splice(index, 1)
+    }
+    
+    ElMessage.success('消息已删除')
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('删除消息失败:', error)
+      ElMessage.error('删除消息失败')
+    }
+  }
 }
 
 // 设置消息同步管理器
@@ -912,7 +985,8 @@ const handleNewMessageUpdate = (data) => {
   // 如果是当前会话的消息，添加到消息列表
   if (selectedConv.value && data.conversationId === selectedConv.value.id) {
     const newMessage = {
-      id: data.messageId,
+      // 通知中的messageId也转为字符串
+      id: String(data.messageId),
       fromUserId: data.fromUserId,
       content: data.content,
       msgType: 1,
@@ -930,7 +1004,8 @@ const handleNewMessageUpdate = (data) => {
 
 // 处理消息撤回更新
 const handleMessageRecalledUpdate = (data) => {
-  const message = messages.value.find(m => m.id === data.messageId)
+  const targetId = String(data.messageId)
+  const message = messages.value.find(m => String(m.id) === targetId)
   if (message) {
     message.status = 0
     message.recallTime = data.recallTime || new Date()
@@ -1260,8 +1335,10 @@ const scrollToBottom = () => {
 /* 消息操作按钮 */
 .message-actions {
   position: absolute;
-  top: -8px;
+  top: -12px;
   right: -8px;
+  display: flex;
+  gap: 6px;
   opacity: 0;
   transition: opacity 0.2s;
 }
@@ -1270,17 +1347,26 @@ const scrollToBottom = () => {
   opacity: 1;
 }
 
-.recall-btn {
+.message-actions .action-btn {
   font-size: 12px !important;
-  padding: 2px 8px !important;
+  padding: 4px 10px !important;
   height: auto !important;
-  background: rgba(0, 0, 0, 0.6) !important;
+  background: rgba(0, 0, 0, 0.7) !important;
   color: white !important;
   border-radius: 4px !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15) !important;
 }
 
-.recall-btn:hover {
-  background: rgba(0, 0, 0, 0.8) !important;
+.message-actions .action-btn:hover {
+  background: rgba(0, 0, 0, 0.85) !important;
+}
+
+.message-actions .delete-btn {
+  background: rgba(245, 108, 108, 0.9) !important;
+}
+
+.message-actions .delete-btn:hover {
+  background: rgba(245, 108, 108, 1) !important;
 }
 
 .message-bubble {

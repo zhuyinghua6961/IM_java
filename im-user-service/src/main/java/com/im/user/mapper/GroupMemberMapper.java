@@ -32,9 +32,14 @@ public interface GroupMemberMapper {
     List<GroupMember> selectByGroupId(@Param("groupId") Long groupId);
     
     /**
-     * 查询用户在某个群的成员信息
+     * 查询用户在某个群的成员信息（只查询status=1的）
      */
     GroupMember selectByGroupIdAndUserId(@Param("groupId") Long groupId, @Param("userId") Long userId);
+    
+    /**
+     * 查询用户在某个群的成员信息（不限制status，包括已退出的）
+     */
+    GroupMember selectByGroupIdAndUserIdIncludeInactive(@Param("groupId") Long groupId, @Param("userId") Long userId);
     
     /**
      * 统计群成员数量

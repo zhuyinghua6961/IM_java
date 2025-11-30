@@ -161,6 +161,33 @@ public class WebSocketUtil {
     }
     
     /**
+     * 推送群组成员被移除通知
+     * @param toUserId 被移除的用户ID
+     * @param operatorId 操作者ID
+     * @param removedUserName 被移除用户昵称
+     * @param groupId 群组ID
+     * @param groupName 群组名称
+     */
+    public void pushGroupRemoveNotification(Long toUserId, Long operatorId, String removedUserName,
+                                           Long groupId, String groupName) {
+        try {
+            Map<String, Object> notification = new HashMap<>();
+            notification.put("type", "GROUP_MEMBER_REMOVED");
+            notification.put("toUserId", toUserId);
+            notification.put("operatorId", operatorId);
+            notification.put("removedUserName", removedUserName);
+            notification.put("groupId", groupId);
+            notification.put("groupName", groupName);
+            notification.put("message", "您已被移出群组 " + groupName);
+            
+            sendNotification(notification);
+            log.info("群组成员移除通知推送成功: user={}, operator={}, group={}", toUserId, operatorId, groupId);
+        } catch (Exception e) {
+            log.error("群组成员移除通知推送失败", e);
+        }
+    }
+    
+    /**
      * 推送群组管理员变更通知
      * @param toUserId 接收方ID（被设置的用户）
      * @param operatorId 操作者ID（群主）

@@ -76,4 +76,19 @@ public interface GroupService {
      * @param groupId 群组ID
      */
     void dissolveGroup(Long groupId);
+    
+    /**
+     * 移除群成员（管理员/群主专用）
+     * @param groupId 群组ID
+     * @param userId 要移除的用户ID
+     */
+    void removeMember(Long groupId, Long userId);
+    
+    /**
+     * 修改群组信息（群主专用）
+     * @param groupId 群组ID
+     * @param groupDTO 群组信息
+     * @return 更新后的群组信息
+     */
+    GroupVO updateGroup(Long groupId, GroupDTO groupDTO);
 }

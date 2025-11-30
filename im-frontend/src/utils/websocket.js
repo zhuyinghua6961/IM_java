@@ -61,6 +61,18 @@ class WebSocketClient {
             return
           }
           
+          // 触发群组通知事件（供Contacts.vue监听）
+          const groupNotificationTypes = [
+            'GROUP_ADMIN_CHANGE',
+            'GROUP_MEMBER_REMOVED',
+            'GROUP_MEMBER_QUIT', 
+            'GROUP_DIRECT_JOIN',
+            'GROUP_DISSOLVED'
+          ]
+          if (groupNotificationTypes.includes(data.type)) {
+            window.dispatchEvent(new CustomEvent('groupNotification', { detail: data }))
+          }
+          
           // 根据通知类型显示不同的通知
           if (data.type === 'FRIEND_REQUEST') {
             // 好友申请通知
@@ -150,6 +162,15 @@ class WebSocketClient {
               message: data.message,
               type: 'error',
               duration: 10000,
+              position: 'top-right'
+            })
+          } else if (data.type === 'GROUP_MEMBER_REMOVED') {
+            // 群组成员被移除通知
+            ElNotification({
+              title: '您已被移出群组',
+              message: data.message,
+              type: 'warning',
+              duration: 8000,
               position: 'top-right'
             })
           } else {

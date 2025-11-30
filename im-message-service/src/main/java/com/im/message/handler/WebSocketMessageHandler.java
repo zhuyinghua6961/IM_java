@@ -51,6 +51,7 @@ public class WebSocketMessageHandler {
             Long fromUserId = (Long) headerAccessor.getSessionAttributes().get("userId");
             if (fromUserId == null) {
                 log.warn("未找到用户ID，消息被拒绝");
+                // 无法获取userId，使用sessionId作为fallback（虽然可能发送失败）
                 sendErrorMessage(headerAccessor.getSessionId(), "用户未认证");
                 return;
             }
@@ -63,14 +64,18 @@ public class WebSocketMessageHandler {
             
             // 4. 保存消息到数据库
             Long messageId = messageService.sendMessage(fromUserId, messageDTO);
+            log.info("=== 消息发送完成 messageId={} ===", messageId);
             
-            // 5. 发送ACK确认给发送方
-            sendAckMessage(headerAccessor.getSessionId(), messageId);
+            // 5. 发送ACK确认给发送方（使用真实的sessionId）
+            String sessionId = headerAccessor.getSessionId();
+            sendAckMessage(sessionId, messageId);
+            log.info("=== ACK已发送给前端 sessionId={}, messageId={} ===", sessionId, messageId);
             
             // 6. 推送消息给接收方
             if (messageDTO.getChatType() == 1) {
                 // 单聊：推送给指定用户
                 pushMessageToUser(messageDTO.getToUserId(), messageId, fromUserId, messageDTO);
+                log.info("=== 消息已推送给接收方 messageId={}, toUserId={} ===", messageId, messageDTO.getToUserId());
             } else if (messageDTO.getChatType() == 2) {
                 // 群聊：推送给群组所有成员（除了发送者）
                 pushMessageToGroup(messageDTO.getGroupId(), messageId, fromUserId, messageDTO);
@@ -80,7 +85,10 @@ public class WebSocketMessageHandler {
             
         } catch (Exception e) {
             log.error("处理WebSocket消息失败", e);
-            sendErrorMessage(headerAccessor.getSessionId(), "消息发送失败: " + e.getMessage());
+            // 尝试获取userId发送错误消息
+            Long fromUserId = (Long) headerAccessor.getSessionAttributes().get("userId");
+            String recipient = fromUserId != null ? String.valueOf(fromUserId) : headerAccessor.getSessionId();
+            sendErrorMessage(recipient, "消息发送失败: " + e.getMessage());
         } finally {
             UserContext.clear();
         }
@@ -88,20 +96,27 @@ public class WebSocketMessageHandler {
     
     /**
      * 发送ACK确认消息给发送方
+     * @param sessionId WebSocket session ID
+     * @param messageId 消息ID
      */
     private void sendAckMessage(String sessionId, Long messageId) {
         Map<String, Object> ack = new HashMap<>();
         ack.put("type", "ACK");
-        ack.put("messageId", messageId);
+        // 使用字符串形式的 messageId，避免前端JS精度丢失
+        ack.put("messageId", String.valueOf(messageId));
         ack.put("status", "success");
         ack.put("timestamp", System.currentTimeMillis());
         
-        messagingTemplate.convertAndSend("/queue/ack-" + sessionId, ack);
-        log.debug("发送ACK确认: sessionId={}, messageId={}", sessionId, messageId);
+        // 直接发送到 /queue/ack-{sessionId}
+        String destination = "/queue/ack-" + sessionId;
+        messagingTemplate.convertAndSend(destination, ack);
+        log.info("✅ ACK已发送到: {}, messageId={}", destination, messageId);
     }
     
     /**
      * 发送错误消息
+     * @param sessionId WebSocket session ID
+     * @param errorMsg 错误消息
      */
     private void sendErrorMessage(String sessionId, String errorMsg) {
         Map<String, Object> error = new HashMap<>();
@@ -109,8 +124,9 @@ public class WebSocketMessageHandler {
         error.put("message", errorMsg);
         error.put("timestamp", System.currentTimeMillis());
         
-        messagingTemplate.convertAndSend("/queue/error-" + sessionId, error);
-        log.debug("发送错误消息: sessionId={}, error={}", sessionId, errorMsg);
+        String destination = "/queue/error-" + sessionId;
+        messagingTemplate.convertAndSend(destination, error);
+        log.error("发送错误消息到: {}, error={}", destination, errorMsg);
     }
     
     /**
@@ -119,7 +135,8 @@ public class WebSocketMessageHandler {
     private void pushMessageToUser(Long toUserId, Long messageId, Long fromUserId, MessageDTO messageDTO) {
         Map<String, Object> message = new HashMap<>();
         message.put("type", "MESSAGE");
-        message.put("messageId", messageId);
+        // 使用字符串形式的 messageId
+        message.put("messageId", String.valueOf(messageId));
         message.put("fromUserId", fromUserId);
         message.put("chatType", messageDTO.getChatType());
         message.put("msgType", messageDTO.getMsgType());
@@ -144,7 +161,8 @@ public class WebSocketMessageHandler {
     private void pushMessageToGroup(Long groupId, Long messageId, Long fromUserId, MessageDTO messageDTO) {
         Map<String, Object> message = new HashMap<>();
         message.put("type", "MESSAGE");
-        message.put("messageId", messageId);
+        // 使用字符串形式的 messageId
+        message.put("messageId", String.valueOf(messageId));
         message.put("fromUserId", fromUserId);
         message.put("groupId", groupId);
         message.put("chatType", messageDTO.getChatType());

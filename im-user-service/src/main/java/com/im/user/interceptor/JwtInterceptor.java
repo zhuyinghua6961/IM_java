@@ -56,7 +56,7 @@ public class JwtInterceptor implements HandlerInterceptor {
                 
                 // 5. Token验证通过，刷新过期时间（滑动过期）
                 redisTemplate.expire(redisKey, RedisConstant.TOKEN_EXPIRE_TIME, TimeUnit.SECONDS);
-                log.debug("Token验证通过并续期，userId: {}", userId);
+                // log.debug("Token验证通过并续期，userId: {}", userId);  // 频繁请求，已关闭日志
                 
                 // 6. 将用户ID存入ThreadLocal
                 UserContext.setCurrentUserId(userId);
@@ -74,6 +74,6 @@ public class JwtInterceptor implements HandlerInterceptor {
     public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) {
         // 5. 请求完成后清除ThreadLocal，防止内存泄漏
         UserContext.clear();
-        log.debug("JWT拦截器：清除当前用户信息");
+        // log.debug("JWT拦截器：清除当前用户信息");  // 频繁请求，已关闭日志
     }
 }

@@ -37,10 +37,35 @@ spring:
       timeout: 5000
       lettuce:
         pool:
-          max-active: 20
-          max-idle: 10
-          min-idle: 5
-          max-wait: 2000
+          max-active: 100
+          max-idle: 50
+          min-idle: 10
+          max-wait: 3000
+  
+  # Kafka配置
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      acks: all
+      retries: 3
+      batch-size: 16384
+      buffer-memory: 33554432
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      properties:
+        max.block.ms: 10000
+        request.timeout.ms: 10000
+        delivery.timeout.ms: 15000
+        metadata.max.age.ms: 5000
+    consumer:
+      group-id: im-message-consumer
+      enable-auto-commit: false
+      max-poll-records: 100
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: earliest
+    listener:
+      ack-mode: manual
 
 # MyBatis配置
 mybatis:
@@ -48,7 +73,7 @@ mybatis:
   type-aliases-package: com.im.message.entity
   configuration:
     map-underscore-to-camel-case: true
-    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+    # log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl  # 关闭SQL详细日志
 
 # JWT配置
 jwt:
@@ -58,6 +83,24 @@ jwt:
 # 日志配置
 logging:
   level:
-    com.im.message: DEBUG
-    org.springframework.web: INFO
-    org.springframework.messaging: DEBUG
+    root: WARN
+    com.im.message: INFO
+    org.springframework.web: WARN
+    org.springframework.messaging: WARN
+    org.springframework.websocket: WARN
+    org.mybatis: WARN
+    com.alibaba.druid: WARN
+
+# 自定义配置
+im:
+  message:
+    # 会话缓存消息数量
+    conv-cache-size: 1000
+    # Redis缓存过期时间（分钟）
+    cache-expire-minutes: 30
+    # 消息撤回时间限制（分钟）
+    recall-time-limit: 5
+    # Kafka Topic
+    kafka-topic: im-message-private
+    # Kafka分区数
+    kafka-partitions: 10

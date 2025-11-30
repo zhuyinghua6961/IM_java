@@ -23,6 +23,9 @@ public class UserController {
     @Autowired
     private UserService userService;
     
+    @Autowired
+    private com.im.user.service.SmsCodeService smsCodeService;
+    
     @PostMapping("/register")
     public Result<UserVO> register(@RequestBody UserDTO userDTO) {
         UserVO userVO = userService.register(userDTO);
@@ -72,6 +75,26 @@ public class UserController {
         List<UserVO> list = res != null ? List.of(res) : new ArrayList<>();
         return Result.success(list);
     }
-
+    
+    /**
+     * 发送短信验证码
+     */
+    @PostMapping("/sms/send")
+    public Result<Void> sendSmsCode(@RequestBody java.util.Map<String, String> request) {
+        String phone = request.get("phone");
+        
+        if (phone == null || phone.isEmpty()) {
+            return Result.error(ResultCode.BAD_REQUEST, "手机号不能为空");
+        }
+        
+        log.info("发送验证码: phone={}", phone);
+        
+        boolean success = smsCodeService.sendCode(phone);
+        if (success) {
+            return Result.success();
+        } else {
+            return Result.error(ResultCode.BAD_REQUEST, "发送验证码失败，请稍后再试");
+        }
+    }
 
 }

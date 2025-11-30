@@ -53,3 +53,13 @@ export function clearUnreadCount(targetId, chatType) {
     data: { targetId, chatType }
   })
 }
+
+/**
+ * 删除单条消息
+ */
+export function deleteMessage(messageId) {
+  return request({
+    url: `/message/${messageId}`,
+    method: 'delete'
+  })
+}

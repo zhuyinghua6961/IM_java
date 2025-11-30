@@ -72,4 +72,9 @@ public interface ConversationMapper {
     int showConversationByUserAndTarget(@Param("userId") Long userId,
                                        @Param("targetId") Long targetId,
                                        @Param("chatType") Integer chatType);
+    
+    /**
+     * 删除会话
+     */
+    int deleteById(@Param("id") Long id);
 }

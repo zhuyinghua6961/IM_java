@@ -33,7 +33,7 @@ public class WebSocketController {
      */
     @MessageMapping("/heartbeat")
     public void handleHeartbeat(Map<String, Object> heartbeat) {
-        log.debug("收到心跳: {}", heartbeat);
+        // log.debug("收到心跳: {}", heartbeat);  // 心跳日志太频繁，已关闭
         // 心跳处理，保持连接
     }
 }

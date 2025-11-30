@@ -13,4 +13,9 @@ public class UserDTO {
     private String avatar;
     private Integer gender;
     private String signature;
+    
+    /**
+     * 短信验证码（注册时使用）
+     */
+    private String code;
 }

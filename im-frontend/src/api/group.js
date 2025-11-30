@@ -32,10 +32,7 @@ export const getGroupMembers = (groupId) => {
  * 邀请用户加入群组
  */
 export const inviteToGroup = (groupId, userIds) => {
-  return request.post('/group/invite', {
-    groupId,
-    userIds
-  })
+  return request.post(`/group/${groupId}/invite`, userIds)
 }
 
 /**
@@ -77,4 +74,20 @@ export const setGroupAdmin = (groupId, userId, isAdmin) => {
     userId,
     isAdmin
   })
+}
+
+/**
+ * 移除群成员（群主专用）
+ */
+export const removeMember = (groupId, userId) => {
+  return request.post(`/group/${groupId}/remove`, {
+    userId
+  })
+}
+
+/**
+ * 修改群组信息（群主专用）
+ */
+export const updateGroup = (groupId, groupData) => {
+  return request.post(`/group/${groupId}/update`, groupData)
 }

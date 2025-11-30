@@ -17,6 +17,12 @@
           </el-badge>
           <span style="margin-left: 8px">群组邀请</span>
         </el-menu-item>
+        <el-menu-item index="groupNotifications">
+          <el-badge :value="unreadGroupNotificationCount" :hidden="unreadGroupNotificationCount === 0">
+            <el-icon><Bell /></el-icon>
+          </el-badge>
+          <span style="margin-left: 8px">群消息通知</span>
+        </el-menu-item>
         <el-menu-item index="friends">
           <el-icon><User /></el-icon>
           <span>好友</span>
@@ -135,6 +141,34 @@
           </div>
         </div>
         
+        <!-- 群消息通知 -->
+        <div v-else-if="activeTab === 'groupNotifications'">
+          <div v-if="groupNotifications.length === 0" class="empty-requests">
+            <el-empty description="暂无群消息通知" />
+          </div>
+          <div v-else>
+            <div
+              v-for="notification in groupNotifications"
+              :key="notification.id"
+              class="request-item"
+            >
+              <el-avatar :size="48" :src="notification.groupAvatar">
+                {{ notification.groupName?.charAt(0) }}
+              </el-avatar>
+              <div class="request-info">
+                <div class="request-name">{{ notification.groupName }}</div>
+                <div class="request-message">{{ notification.message }}</div>
+                <div class="request-time">{{ formatTime(notification.createTime) }}</div>
+              </div>
+              <div class="request-actions">
+                <el-tag :type="getNotificationTypeTag(notification.type)" size="small">
+                  {{ getNotificationTypeText(notification.type) }}
+                </el-tag>
+              </div>
+            </div>
+          </div>
+        </div>
+        
         <!-- 好友列表 -->
         <div v-else-if="activeTab === 'friends'">
           <div v-for="friend in friends" :key="friend.userId" class="contact-item">
@@ -175,6 +209,10 @@
                   <el-dropdown-item command="chat">
                     <el-icon><ChatDotRound /></el-icon>
                     <span>发送消息</span>
+                  </el-dropdown-item>
+                  <el-dropdown-item command="invite">
+                    <el-icon><Plus /></el-icon>
+                    <span>邀请成员</span>
                   </el-dropdown-item>
                   <el-dropdown-item command="info">
                     <el-icon><InfoFilled /></el-icon>
@@ -317,43 +355,82 @@
     </el-dialog>
     
     <!-- 群组详情对话框 -->
-    <el-dialog v-model="showGroupInfoDialog" title="群组详情" width="500px">
+    <el-dialog 
+      v-model="showGroupInfoDialog" 
+      :title="editingGroupInfo ? '编辑群组信息' : '群组详情'" 
+      width="500px">
       <div v-if="currentGroup" class="group-info">
-        <div class="info-section">
+        <div class="info-section" v-if="!editingGroupInfo">
           <el-avatar :size="80" :src="currentGroup.avatar">
             {{ currentGroup.groupName?.charAt(0) }}
           </el-avatar>
         </div>
         
-        <div class="info-section">
-          <div class="info-item">
-            <span class="info-label">群名称</span>
-            <span class="info-value">{{ currentGroup.groupName }}</span>
+        <template v-if="editingGroupInfo">
+          <!-- 编辑模式 -->
+          <el-form :model="groupEditForm" label-width="80px">
+            <el-form-item label="群名称">
+              <el-input v-model="groupEditForm.groupName" placeholder="请输入群名称" />
+            </el-form-item>
+            <el-form-item label="群头像">
+              <el-input v-model="groupEditForm.avatar" placeholder="请输入头像链接" />
+            </el-form-item>
+            <el-form-item label="群公告">
+              <el-input 
+                v-model="groupEditForm.notice" 
+                type="textarea" 
+                :rows="3"
+                placeholder="请输入群公告" 
+              />
+            </el-form-item>
+            <el-form-item label="最大人数">
+              <el-input-number 
+                v-model="groupEditForm.maxMembers" 
+                :min="currentGroup.memberCount" 
+                :max="1000"
+              />
+            </el-form-item>
+          </el-form>
+        </template>
+        
+        <template v-else>
+          <!-- 查看模式 -->
+          <div class="info-section">
+            <div class="info-label">群名称</div>
+            <div class="info-value">{{ currentGroup.groupName }}</div>
           </div>
-          
-          <div class="info-item">
-            <span class="info-label">群成员</span>
-            <span class="info-value">{{ currentGroup.memberCount }} 人</span>
+          <div class="info-section">
+            <div class="info-label">群主</div>
+            <div class="info-value">{{ currentGroup.ownerName || '未知' }}</div>
           </div>
-          
-          <div class="info-item">
-            <span class="info-label">最大人数</span>
-            <span class="info-value">{{ currentGroup.maxMembers }} 人</span>
+          <div class="info-section">
+            <div class="info-label">群成员</div>
+            <div class="info-value">{{ currentGroup.memberCount }} / {{ currentGroup.maxMembers }}</div>
           </div>
-          
-          <div class="info-item">
-            <span class="info-label">创建时间</span>
-            <span class="info-value">{{ formatDateTime(currentGroup.createTime) }}</span>
+          <div class="info-section">
+            <div class="info-label">群公告</div>
+            <div class="info-value">{{ currentGroup.notice || '暂无公告' }}</div>
           </div>
-          
-          <div v-if="currentGroup.notice" class="info-item notice-item">
-            <span class="info-label">群公告</span>
-            <div class="info-value notice-content">{{ currentGroup.notice }}</div>
+          <div class="info-section">
+            <div class="info-label">创建时间</div>
+            <div class="info-value">{{ formatTime(currentGroup.createTime) }}</div>
           </div>
-        </div>
+        </template>
       </div>
       <template #footer>
-        <el-button @click="showGroupInfoDialog = false">关闭</el-button>
+        <template v-if="editingGroupInfo">
+          <el-button @click="cancelEditGroupInfo">取消</el-button>
+          <el-button type="primary" @click="saveGroupInfo" :loading="savingGroupInfo">保存</el-button>
+        </template>
+        <template v-else>
+          <el-button @click="showGroupInfoDialog = false">关闭</el-button>
+          <el-button 
+            v-if="currentGroup.ownerId === getCurrentUserId()" 
+            type="primary" 
+            @click="startEditGroupInfo">
+            编辑
+          </el-button>
+        </template>
       </template>
     </el-dialog>
     
@@ -363,6 +440,15 @@
         <div class="members-header">
           <h4>{{ currentGroup.groupName }} - 成员列表</h4>
           <span class="member-count">共 {{ groupMembers.length }} 人</span>
+          <el-button 
+            type="primary" 
+            size="small" 
+            :icon="Plus" 
+            @click="openInviteMembersDialog"
+            v-if="currentUserRole >= 1"
+          >
+            邀请成员
+          </el-button>
         </div>
         
         <el-scrollbar max-height="400px">
@@ -387,7 +473,8 @@
                 </el-tag>
               </div>
               
-              <div class="member-actions" v-if="currentUserRole === 2 && member.role !== 2">
+              <!-- 群主的操作按钮 -->
+              <div class="member-actions" v-if="currentUserRole === 2 && member.userId !== getCurrentUserId()">
                 <el-button
                   v-if="member.role === 0"
                   type="primary"
@@ -404,6 +491,25 @@
                 >
                   取消管理员
                 </el-button>
+                <el-button
+                  type="danger"
+                  size="small"
+                  @click="removeMember(currentGroup.groupId, member.userId, member.nickname)"
+                  v-if="member.role !== 2"
+                >
+                  移除
+                </el-button>
+              </div>
+              
+              <!-- 管理员的操作按钮（只能移除普通成员） -->
+              <div class="member-actions" v-else-if="currentUserRole === 1 && member.role === 0 && member.userId !== getCurrentUserId()">
+                <el-button
+                  type="danger"
+                  size="small"
+                  @click="removeMember(currentGroup.groupId, member.userId, member.nickname)"
+                >
+                  移除
+                </el-button>
               </div>
             </div>
           </div>
@@ -413,13 +519,60 @@
         <el-button @click="showGroupMembersDialog = false">关闭</el-button>
       </template>
     </el-dialog>
+    
+    <!-- 邀请成员对话框 -->
+    <el-dialog v-model="showInviteMembersDialog" title="邀请成员" width="500px">
+      <div v-if="currentGroup" class="invite-members">
+        <el-alert type="info" :closable="false" show-icon style="margin-bottom: 15px">
+          邀请好友加入群组：{{ currentGroup.groupName }}
+        </el-alert>
+        
+        <el-form label-width="80px">
+          <el-form-item label="选择好友">
+            <div class="friend-selection">
+              <el-checkbox-group v-model="selectedInviteMembers">
+                <div v-for="friend in availableFriends" :key="friend.userId" class="friend-item">
+                  <el-checkbox :label="friend.userId">
+                    <el-avatar :size="30" :src="friend.avatar">
+                      {{ friend.nickname?.charAt(0) }}
+                    </el-avatar>
+                    <span class="friend-name">{{ friend.nickname }}</span>
+                  </el-checkbox>
+                </div>
+              </el-checkbox-group>
+              
+              <div v-if="availableFriends.length === 0" class="no-friends">
+                <el-empty description="暂无可邀请的好友" :image-size="60" />
+              </div>
+            </div>
+          </el-form-item>
+          
+          <el-form-item v-if="selectedInviteMembers.length > 0" label="">
+            <el-alert type="success" :closable="false" show-icon>
+              已选择 {{ selectedInviteMembers.length }} 人
+            </el-alert>
+          </el-form-item>
+        </el-form>
+      </div>
+      <template #footer>
+        <el-button @click="showInviteMembersDialog = false">取消</el-button>
+        <el-button
+          type="primary"
+          @click="handleInviteMembers"
+          :loading="inviteMembersLoading"
+          :disabled="selectedInviteMembers.length === 0"
+        >
+          发送邀请
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { MoreFilled, ChatDotRound, Delete, InfoFilled, Close, Message } from '@element-plus/icons-vue'
+import { MoreFilled, ChatDotRound, Delete, InfoFilled, Close, Message, Plus, User, Bell, UserFilled } from '@element-plus/icons-vue'
 import { getFriendList, addFriend, handleFriendRequest } from '@/api/friend'
 import { searchUser } from '@/api/user'
 import { 
@@ -431,12 +584,17 @@ import {
   getMyGroupInvitations,
   quitGroup,
   dissolveGroup,
-  setGroupAdmin as setGroupAdminApi
+  setGroupAdmin as setGroupAdminApi,
+  inviteToGroup,
+  removeMember as removeMemberApi,
+  updateGroup
 } from '@/api/group'
 import request from '@/utils/request'
 import { useRouter } from 'vue-router'
+import { useUserStore } from '@/stores/user'
 
 const router = useRouter()
+const userStore = useUserStore()
 
 const activeTab = ref('friends')
 const searchKeyword = ref('')
@@ -444,16 +602,22 @@ const showAddDialog = ref(false)
 const showCreateGroupDialog = ref(false)
 const showGroupInfoDialog = ref(false)
 const showGroupMembersDialog = ref(false)
+const showInviteMembersDialog = ref(false)
+const editingGroupInfo = ref(false)
+const savingGroupInfo = ref(false)
 const addLoading = ref(false)
 const searchLoading = ref(false)
 const createGroupLoading = ref(false)
+const inviteMembersLoading = ref(false)
 const friends = ref([])
 const groups = ref([])
 const friendRequests = ref([])
 const groupInvitations = ref([])
+const groupNotifications = ref([])
 const currentGroup = ref(null)
 const groupMembers = ref([])
 const currentUserRole = ref(0)
+const selectedInviteMembers = ref([])
 
 const searchInput = ref('')
 const searchResults = ref([])
@@ -465,8 +629,17 @@ const addForm = ref({
 
 const createGroupForm = ref({
   groupName: '',
+  avatar: '',
   notice: '',
+  maxMembers: 500,
   memberIds: []
+})
+
+const groupEditForm = ref({
+  groupName: '',
+  avatar: '',
+  notice: '',
+  maxMembers: 500
 })
 
 // 计算未读申请数量
@@ -479,6 +652,21 @@ const unreadGroupInvitationCount = computed(() => {
   return groupInvitations.value.filter(i => i.status === 1).length
 })
 
+// 计算未读群消息通知数量
+const unreadGroupNotificationCount = computed(() => {
+  return groupNotifications.value.filter(n => !n.read).length
+})
+
+// 计算可邀请的好友（排除已在群里的）
+const availableFriends = computed(() => {
+  if (!currentGroup.value || groupMembers.value.length === 0) {
+    return friends.value
+  }
+  
+  const memberUserIds = groupMembers.value.map(m => m.userId)
+  return friends.value.filter(f => !memberUserIds.includes(f.userId))
+})
+
 const handleTabSelect = (index) => {
   activeTab.value = index
   
@@ -487,6 +675,9 @@ const handleTabSelect = (index) => {
     loadFriendRequests()
   } else if (index === 'groupInvitations') {
     loadGroupInvitations()
+  } else if (index === 'groupNotifications') {
+    loadGroupNotifications()
+    markGroupNotificationsAsRead()
   } else if (index === 'groups') {
     loadGroupList()
   }
@@ -639,6 +830,71 @@ const loadGroupInvitations = async () => {
   }
 }
 
+// 加载群消息通知列表
+const loadGroupNotifications = () => {
+  // 从 localStorage 加载通知
+  const stored = localStorage.getItem('groupNotifications')
+  if (stored) {
+    try {
+      groupNotifications.value = JSON.parse(stored)
+    } catch (error) {
+      console.error('解析群消息通知失败:', error)
+      groupNotifications.value = []
+    }
+  }
+}
+
+// 标记群消息通知为已读
+const markGroupNotificationsAsRead = () => {
+  groupNotifications.value.forEach(n => n.read = true)
+  localStorage.setItem('groupNotifications', JSON.stringify(groupNotifications.value))
+}
+
+// 添加群消息通知
+const addGroupNotification = (notification) => {
+  groupNotifications.value.unshift({
+    id: Date.now(),
+    type: notification.type,
+    groupId: notification.groupId,
+    groupName: notification.groupName || '未知群组',
+    groupAvatar: notification.groupAvatar || '',
+    message: notification.message,
+    createTime: new Date().toISOString(),
+    read: false
+  })
+  
+  // 只保留最近100条通知
+  if (groupNotifications.value.length > 100) {
+    groupNotifications.value = groupNotifications.value.slice(0, 100)
+  }
+  
+  localStorage.setItem('groupNotifications', JSON.stringify(groupNotifications.value))
+}
+
+// 获取通知类型标签
+const getNotificationTypeTag = (type) => {
+  const tagMap = {
+    'GROUP_ADMIN_CHANGE': 'warning',
+    'GROUP_MEMBER_REMOVED': 'danger',
+    'GROUP_MEMBER_QUIT': 'info',
+    'GROUP_DIRECT_JOIN': 'success',
+    'GROUP_DISSOLVED': 'danger'
+  }
+  return tagMap[type] || 'info'
+}
+
+// 获取通知类型文本
+const getNotificationTypeText = (type) => {
+  const textMap = {
+    'GROUP_ADMIN_CHANGE': '管理员变更',
+    'GROUP_MEMBER_REMOVED': '成员被移除',
+    'GROUP_MEMBER_QUIT': '成员退出',
+    'GROUP_DIRECT_JOIN': '直接加入',
+    'GROUP_DISSOLVED': '群组解散'
+  }
+  return textMap[type] || '系统通知'
+}
+
 // 处理好友申请（同意或拒绝）
 const handleRequest = async (requestId, status) => {
   try {
@@ -742,6 +998,18 @@ const handleGroupAction = async (command, group) => {
       }
     })
     ElMessage.success(`即将在群 ${group.groupName} 中聊天`)
+  } else if (command === 'invite') {
+    // 邀请成员 - 直接打开邀请对话框
+    currentGroup.value = group
+    // 先加载群成员列表用于过滤
+    try {
+      const res = await getGroupMembers(group.groupId)
+      groupMembers.value = res.data || []
+      openInviteMembersDialog()
+    } catch (error) {
+      console.error('获取群成员失败:', error)
+      ElMessage.error('获取群成员失败')
+    }
   } else if (command === 'info') {
     // 查看群信息
     await showGroupInfo(group.groupId)
@@ -771,10 +1039,57 @@ const showGroupInfo = async (groupId) => {
   try {
     const res = await getGroupDetail(groupId)
     currentGroup.value = res.data
+    editingGroupInfo.value = false
     showGroupInfoDialog.value = true
   } catch (error) {
     console.error('获取群组详情失败:', error)
     ElMessage.error('获取群组详情失败')
+  }
+}
+
+// 开始编辑群信息
+const startEditGroupInfo = () => {
+  groupEditForm.value = {
+    groupName: currentGroup.value.groupName,
+    avatar: currentGroup.value.avatar || '',
+    notice: currentGroup.value.notice || '',
+    maxMembers: currentGroup.value.maxMembers
+  }
+  editingGroupInfo.value = true
+}
+
+// 取消编辑群信息
+const cancelEditGroupInfo = () => {
+  editingGroupInfo.value = false
+}
+
+// 保存群信息
+const saveGroupInfo = async () => {
+  if (!groupEditForm.value.groupName || !groupEditForm.value.groupName.trim()) {
+    ElMessage.warning('群名称不能为空')
+    return
+  }
+  
+  try {
+    savingGroupInfo.value = true
+    
+    await updateGroup(currentGroup.value.groupId, groupEditForm.value)
+    
+    ElMessage.success('群组信息修改成功')
+    
+    // 重新加载群组详情
+    const res = await getGroupDetail(currentGroup.value.groupId)
+    currentGroup.value = res.data
+    
+    // 刷新群组列表
+    loadGroupList()
+    
+    editingGroupInfo.value = false
+  } catch (error) {
+    console.error('修改群组信息失败:', error)
+    ElMessage.error(error.response?.data?.message || '修改群组信息失败')
+  } finally {
+    savingGroupInfo.value = false
   }
 }
 
@@ -808,15 +1123,85 @@ const setGroupAdmin = async (groupId, userId, isAdmin) => {
     await showGroupMembers(groupId)
   } catch (error) {
     console.error('设置管理员失败:', error)
-    ElMessage.error('操作失败')
+    ElMessage.error(error.response?.data?.message || '操作失败')
   }
 }
 
-// 获取当前用户ID（临时实现，实际应该从用户状态管理中获取）
+// 移除群成员
+const removeMember = async (groupId, userId, nickname) => {
+  try {
+    await ElMessageBox.confirm(
+      `确定要将 ${nickname} 移出群组吗？`,
+      '移除成员',
+      {
+        confirmButtonText: '确定移除',
+        cancelButtonText: '取消',
+        type: 'warning',
+        confirmButtonClass: 'el-button--danger'
+      }
+    )
+    
+    // 调用移除成员API
+    await removeMemberApi(groupId, userId)
+    
+    ElMessage.success('已移除该成员')
+    
+    // 刷新成员列表
+    await showGroupMembers(groupId)
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('移除成员失败:', error)
+      ElMessage.error(error.response?.data?.message || '移除成员失败')
+    }
+  }
+}
+
+// 打开邀请成员对话框
+const openInviteMembersDialog = () => {
+  selectedInviteMembers.value = []
+  showInviteMembersDialog.value = true
+}
+
+// 处理邀请成员
+const handleInviteMembers = async () => {
+  if (selectedInviteMembers.value.length === 0) {
+    ElMessage.warning('请选择要邀请的好友')
+    return
+  }
+  
+  if (!currentGroup.value) {
+    ElMessage.error('群组信息不存在')
+    return
+  }
+  
+  try {
+    inviteMembersLoading.value = true
+    
+    await inviteToGroup(currentGroup.value.groupId, selectedInviteMembers.value)
+    
+    ElMessage.success(`已向 ${selectedInviteMembers.value.length} 人发送群组邀请`)
+    
+    // 关闭对话框
+    showInviteMembersDialog.value = false
+    selectedInviteMembers.value = []
+    
+    // 刷新成员列表（稍后刷新，等待对方同意）
+    setTimeout(() => {
+      if (currentGroup.value) {
+        showGroupMembers(currentGroup.value.groupId)
+      }
+    }, 1000)
+  } catch (error) {
+    console.error('邀请成员失败:', error)
+    ElMessage.error(error.response?.data?.message || '邀请成员失败')
+  } finally {
+    inviteMembersLoading.value = false
+  }
+}
+
+// 获取当前用户ID
 const getCurrentUserId = () => {
-  // 这里应该从用户状态管理或localStorage中获取
-  // 临时返回一个值，实际项目中需要正确实现
-  return parseInt(localStorage.getItem('userId') || '1')
+  return userStore.userInfo?.userId || null
 }
 
 // 获取角色显示文本
@@ -933,6 +1318,9 @@ onMounted(async () => {
   // 加载群组邀请列表
   loadGroupInvitations()
   
+  // 加载群消息通知
+  loadGroupNotifications()
+  
   // 加载好友列表（默认显示）
   try {
     const res = await getFriendList()
@@ -943,6 +1331,23 @@ onMounted(async () => {
   
   // 加载群组列表
   loadGroupList()
+  
+  // 监听WebSocket群组通知
+  window.addEventListener('groupNotification', (event) => {
+    const notification = event.detail
+    // 过滤出需要显示在群消息通知中的类型
+    const displayTypes = [
+      'GROUP_ADMIN_CHANGE',
+      'GROUP_MEMBER_REMOVED', 
+      'GROUP_MEMBER_QUIT',
+      'GROUP_DIRECT_JOIN',
+      'GROUP_DISSOLVED'
+    ]
+    
+    if (displayTypes.includes(notification.type)) {
+      addGroupNotification(notification)
+    }
+  })
 })
 </script>
 
@@ -1187,21 +1592,24 @@ onMounted(async () => {
 
 .members-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
+  justify-content: space-between;
+  margin-bottom: 15px;
   padding-bottom: 10px;
   border-bottom: 1px solid #e0e0e0;
 }
 
 .members-header h4 {
   margin: 0;
+  font-size: 16px;
   color: #303133;
 }
 
 .member-count {
-  font-size: 12px;
+  font-size: 13px;
   color: #909399;
+  margin-left: auto;
+  margin-right: 10px;
 }
 
 .member-list {
@@ -1251,5 +1659,49 @@ onMounted(async () => {
 .member-actions {
   display: flex;
   gap: 8px;
+}
+
+/* 邀请成员对话框样式 */
+.invite-members {
+  padding: 10px;
+}
+
+.friend-selection {
+  max-height: 350px;
+  overflow-y: auto;
+  padding: 5px;
+}
+
+.friend-item {
+  padding: 10px;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  transition: background 0.2s;
+}
+
+.friend-item:hover {
+  background: #f5f7fa;
+}
+
+.friend-item .el-checkbox {
+  width: 100%;
+}
+
+.friend-item .el-avatar {
+  margin-left: 8px;
+  margin-right: 10px;
+  vertical-align: middle;
+}
+
+.friend-name {
+  font-size: 14px;
+  color: #303133;
+  vertical-align: middle;
+  margin-left: 8px;
+}
+
+.no-friends {
+  padding: 30px 0;
+  text-align: center;
 }
 </style>

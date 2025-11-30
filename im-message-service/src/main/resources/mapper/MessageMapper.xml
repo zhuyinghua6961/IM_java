@@ -14,11 +14,13 @@
         <result column="status" property="status"/>
         <result column="send_time" property="sendTime"/>
         <result column="recall_time" property="recallTime"/>
+        <result column="persist_status" property="persistStatus"/>
     </resultMap>
 
     <!-- 插入消息 -->
     <insert id="insert" parameterType="com.im.message.entity.Message" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO message (
+            <if test="id != null">id,</if>
             from_user_id,
             to_id,
             chat_type,
@@ -26,8 +28,10 @@
             content,
             url,
             status,
-            send_time
+            send_time,
+            persist_status
         ) VALUES (
+            <if test="id != null">#{id},</if>
             #{fromUserId},
             #{toId},
             #{chatType},
@@ -35,7 +39,8 @@
             #{content},
             #{url},
             #{status},
-            #{sendTime}
+            #{sendTime},
+            #{persistStatus}
         )
     </insert>
 
@@ -46,11 +51,13 @@
         WHERE id = #{id}
     </select>
 
-    <!-- 查询历史消息（分页） -->
+    <!-- 查询历史消息（分页），排除用户删除的消息 -->
     <select id="selectHistoryMessages" resultMap="BaseResultMap">
-        SELECT *
-        FROM message
-        WHERE status = 1
+        SELECT m.*
+        FROM message m
+        LEFT JOIN message_delete md ON m.id = md.message_id AND md.user_id = #{userId}
+        WHERE m.status = 1
+          AND md.id IS NULL
         <choose>
             <when test="chatType == 1">
                 <!-- 单聊：查询双方的消息 -->
@@ -71,11 +78,13 @@
         LIMIT #{offset}, #{limit}
     </select>
 
-    <!-- 统计历史消息总数 -->
+    <!-- 统计历史消息总数，排除用户删除的消息 -->
     <select id="countHistoryMessages" resultType="int">
         SELECT COUNT(*)
-        FROM message
-        WHERE status = 1
+        FROM message m
+        LEFT JOIN message_delete md ON m.id = md.message_id AND md.user_id = #{userId}
+        WHERE m.status = 1
+          AND md.id IS NULL
         <choose>
             <when test="chatType == 1">
                 <!-- 单聊：统计双方的消息 -->
@@ -119,6 +128,38 @@
         WHERE id = #{messageId}
           AND from_user_id = #{fromUserId}
           AND status = 1
+    </update>
+
+    <!-- 删除用户的聊天记录（仅删除当前用户发送的消息） -->
+    <delete id="deleteUserMessages">
+        DELETE FROM message
+        WHERE from_user_id = #{userId}
+          AND to_id = #{targetId}
+          AND chat_type = #{chatType}
+    </delete>
+    
+    <!-- 根据ID删除消息（物理删除） -->
+    <delete id="deleteById">
+        DELETE FROM message WHERE id = #{id}
+    </delete>
+    
+    <!-- 更新消息 -->
+    <update id="updateById">
+        UPDATE message
+        <set>
+            <if test="status != null">status = #{status},</if>
+            <if test="recallTime != null">recall_time = #{recallTime},</if>
+            <if test="persistStatus != null">persist_status = #{persistStatus},</if>
+        </set>
+        WHERE id = #{id}
+    </update>
+    
+    <!-- 更新消息撤回状态 -->
+    <update id="updateRecallStatus">
+        UPDATE message
+        SET status = 0,
+            recall_time = FROM_UNIXTIME(#{recallTime} / 1000)
+        WHERE id = #{messageId}
     </update>
 
 </mapper>

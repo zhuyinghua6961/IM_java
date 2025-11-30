@@ -59,4 +59,19 @@ public interface ConversationService {
      * @param chatType 聊天类型
      */
     void showConversation(Long userId, Long targetId, Integer chatType);
+    
+    /**
+     * 删除会话
+     * @param conversationId 会话ID
+     * @param userId 当前用户ID（用于权限验证）
+     */
+    void deleteConversation(Long conversationId, Long userId);
+    
+    /**
+     * 根据用户和目标删除会话
+     * @param userId 用户ID
+     * @param targetId 对方ID
+     * @param chatType 聊天类型
+     */
+    void deleteConversationByUserAndTarget(Long userId, Long targetId, Integer chatType);
 }
