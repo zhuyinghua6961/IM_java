@@ -129,7 +129,7 @@
                 </div>
                 <div class="message-bubble" :class="{ 'recalled': isRecalledMessage(msg), 'sending': isSendingMessage(msg) }">
                   <template v-if="isRecalledMessage(msg)">
-                    <span class="recalled-text">{{ msg.fromUserId === currentUserId ? '你' : msg.nickname }} 撤回了一条消息</span>
+                    <span class="recalled-text">{{ getRecalledText(msg) }}</span>
                   </template>
                   <template v-else-if="isSendingMessage(msg)">
                     <span class="sending-text">{{ msg.content }}</span>
@@ -858,6 +858,25 @@ const isSendingMessage = (message) => {
 // 检查是否为已撤回的消息
 const isRecalledMessage = (message) => {
   return message.status === 0 && !String(message.id).startsWith('temp-')
+}
+
+// 撤回消息气泡文案
+// 单聊：自己 -> “你 撤回了一条消息”，对方 -> “对方 撤回了一条消息”
+// 群聊：自己 -> “你 撤回了一条消息”，他人 -> “{昵称} 撤回了一条消息”
+const getRecalledText = (message) => {
+  // 自己撤回
+  if (message.fromUserId === currentUserId.value) {
+    return '你 撤回了一条消息'
+  }
+
+  // 对方撤回 - 单聊：固定显示“对方”
+  if (selectedConv.value && selectedConv.value.chatType === 1) {
+    return '对方 撤回了一条消息'
+  }
+
+  // 群聊：显示昵称
+  const name = message.nickname || '对方'
+  return `${name} 撤回了一条消息`
 }
 
 // 检查消息是否可以撤回（5分钟内）

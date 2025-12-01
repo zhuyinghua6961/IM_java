@@ -44,20 +44,28 @@ public class MessageCompensateTask {
         log.debug("开始执行消息补偿任务");
         
         try {
-            // 扫描Redis中所有消息详情
-            Set<String> keys = redisTemplate.keys(RedisKeyConstant.MESSAGE_DETAIL_PREFIX + "*");
-            if (keys == null || keys.isEmpty()) {
+            int compensateCount = 0;
+            long now = System.currentTimeMillis();
+            long threshold = now - 5 * 60 * 1000; // 超过5分钟未持久化需要补偿
+            
+            // 从PENDING ZSet中获取超时的PENDING消息ID
+            Set<String> pendingIds = redisTemplate.opsForZSet()
+                    .rangeByScore(RedisKeyConstant.PENDING_MESSAGE_ZSET_KEY, 0, threshold);
+            if (pendingIds == null || pendingIds.isEmpty()) {
                 log.debug("没有找到待补偿的消息");
                 return;
             }
             
-            int compensateCount = 0;
-            long now = System.currentTimeMillis();
-            
-            for (String key : keys) {
+            for (String idStr : pendingIds) {
+                String key = null;
                 try {
+                    Long messageId = Long.valueOf(idStr);
+                    key = RedisKeyConstant.getMessageDetailKey(messageId);
+                    
                     String msgJson = redisTemplate.opsForValue().get(key);
                     if (msgJson == null) {
+                        // 详情不存在，说明已处理，清理PENDING集合中的残留
+                        redisTemplate.opsForZSet().remove(RedisKeyConstant.PENDING_MESSAGE_ZSET_KEY, idStr);
                         continue;
                     }
                     
@@ -65,6 +73,8 @@ public class MessageCompensateTask {
                     
                     // 检查条件：PENDING状态 + 超过5分钟
                     if (!RedisKeyConstant.PERSIST_STATUS_PENDING.equals(msg.getPersistStatus())) {
+                        // 状态已变更，移出PENDING集合
+                        redisTemplate.opsForZSet().remove(RedisKeyConstant.PENDING_MESSAGE_ZSET_KEY, idStr);
                         continue;
                     }
                     
@@ -88,6 +98,8 @@ public class MessageCompensateTask {
                         msg.setPersistStatus(RedisKeyConstant.PERSIST_STATUS_PERSISTED);
                         redisTemplate.opsForValue().set(key, JSON.toJSONString(msg));
                         log.info("补偿任务：消息已在数据库，更新状态: {}", msg.getId());
+                        // 移出PENDING集合
+                        redisTemplate.opsForZSet().remove(RedisKeyConstant.PENDING_MESSAGE_ZSET_KEY, idStr);
                         continue;
                     }
                     
@@ -97,6 +109,8 @@ public class MessageCompensateTask {
                         // 已撤回，删除Redis
                         redisTemplate.delete(key);
                         log.info("补偿任务：消息已撤回，清理Redis: {}", msg.getId());
+                        // 移出PENDING集合
+                        redisTemplate.opsForZSet().remove(RedisKeyConstant.PENDING_MESSAGE_ZSET_KEY, idStr);
                         continue;
                     }
                     

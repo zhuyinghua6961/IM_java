@@ -101,7 +101,7 @@ public class MessageServiceImpl implements MessageService {
             
             // 缓存到Redis并发送到Kafka
             messageCacheService.cacheAndSendToKafka(message);
-            log.info("单聊消息已缓存，将异步持久化: messageId={}", message.getId());
+            log.debug("单聊消息已缓存，将异步持久化: messageId={}", message.getId());
         } else {
             // 群聊：保持同步写库（群聊消息量大，需要额外优化，暂不使用异步）
             // 为群聊消息同样使用雪花ID，并通过Kafka+Redis异步持久化
@@ -109,7 +109,7 @@ public class MessageServiceImpl implements MessageService {
             message.setPersistStatus(RedisKeyConstant.PERSIST_STATUS_PENDING);
 
             messageCacheService.cacheAndSendToKafka(message);
-            log.info("群聊消息已缓存，将异步持久化: messageId={}", message.getId());
+            log.debug("群聊消息已缓存，将异步持久化: messageId={}", message.getId());
         }
         
         // 4. 更新会话
@@ -142,24 +142,38 @@ public class MessageServiceImpl implements MessageService {
     
     @Override
     public Map<String, Object> getHistoryMessages(Long userId, Long targetId, Integer chatType, Integer page, Integer size) {
-        log.info("获取历史消息，userId: {}, targetId: {}, chatType: {}, page: {}, size: {}", 
+        log.debug("获取历史消息，userId: {}, targetId: {}, chatType: {}, page: {}, size: {}", 
                 userId, targetId, chatType, page, size);
         
         List<Message> resultMessages = new ArrayList<>();
         
-        // 单聊：先查Redis缓存
-        if (chatType == 1) {
-            String conversationId = messageCacheService.generateConversationId(userId, targetId);
-            List<Message> cachedMessages = messageCacheService.getConversationMessagesFromCache(conversationId, 100);
-            
-            // 过滤已删除的消息
-            for (Message msg : cachedMessages) {
-                if (!messageCacheService.isMessageDeleted(userId, msg.getId())) {
-                    resultMessages.add(msg);
+        // 仅第一页先查Redis缓存（单聊/群聊），后续页直接使用MySQL
+        if (page == 1) {
+            if (chatType == 1) {
+                String conversationId = messageCacheService.generateConversationId(userId, targetId);
+                List<Message> cachedMessages = messageCacheService.getConversationMessagesFromCache(conversationId, 100);
+                
+                // 过滤已删除的消息
+                for (Message msg : cachedMessages) {
+                    if (!messageCacheService.isMessageDeleted(userId, msg.getId())) {
+                        resultMessages.add(msg);
+                    }
                 }
+                
+                log.debug("Redis缓存命中消息数: {}", resultMessages.size());
+            } else if (chatType == 2) {
+                // 群聊：使用groupId作为会话ID，从Redis读取最近的群聊消息
+                String conversationId = String.valueOf(targetId);
+                List<Message> cachedMessages = messageCacheService.getConversationMessagesFromCache(conversationId, 100);
+
+                for (Message msg : cachedMessages) {
+                    if (!messageCacheService.isMessageDeleted(userId, msg.getId())) {
+                        resultMessages.add(msg);
+                    }
+                }
+
+                log.debug("Redis缓存命中群聊消息数: {}", resultMessages.size());
             }
-            
-            log.info("Redis缓存命中消息数: {}", resultMessages.size());
         }
         
         // Redis不够或群聊，查MySQL补充
@@ -178,7 +192,7 @@ public class MessageServiceImpl implements MessageService {
                 }
             }
             
-            log.info("MySQL查询消息数: {}", dbMessages.size());
+            log.debug("MySQL查询消息数: {}", dbMessages.size());
         }
         
         // 按时间倒序排序
@@ -195,7 +209,7 @@ public class MessageServiceImpl implements MessageService {
         result.put("total", total);
         result.put("list", pagedMessages);
         
-        log.info("获取历史消息成功，total: {}, listSize: {}", total, pagedMessages.size());
+        log.debug("获取历史消息成功，total: {}, listSize: {}", total, pagedMessages.size());
         return result;
     }
     
@@ -207,11 +221,11 @@ public class MessageServiceImpl implements MessageService {
         try {
             // 1. 查询消息（先查Redis，再查MySQL）
             Message message = messageCacheService.getMessageFromCache(messageId);
-            log.info("从Redis查询消息: messageId={}, result={}", messageId, message != null ? "找到" : "未找到");
+            log.debug("从Redis查询消息: messageId={}, result={}", messageId, message != null ? "找到" : "未找到");
             
             if (message == null) {
                 message = messageMapper.selectById(messageId);
-                log.info("从MySQL查询消息: messageId={}, result={}", messageId, message != null ? "找到" : "未找到");
+                log.debug("从MySQL查询消息: messageId={}, result={}", messageId, message != null ? "找到" : "未找到");
             }
             
             if (message == null) {
@@ -219,7 +233,7 @@ public class MessageServiceImpl implements MessageService {
                 throw new BusinessException(ResultCode.NOT_FOUND, "消息不存在");
             }
             
-            log.info("查询到消息: fromUserId={}, chatType={}, status={}, persistStatus={}, sendTime={}", 
+            log.debug("查询到消息: fromUserId={}, chatType={}, status={}, persistStatus={}, sendTime={}", 
                     message.getFromUserId(), message.getChatType(), message.getStatus(), 
                     message.getPersistStatus(), message.getSendTime());
             
@@ -240,7 +254,7 @@ public class MessageServiceImpl implements MessageService {
             LocalDateTime sendTime = message.getSendTime();
             long diffMinutes = java.time.Duration.between(sendTime, now).toMinutes();
             
-            log.info("时间检查: 发送时间={}, 当前时间={}, 相差{}分钟", sendTime, now, diffMinutes);
+            log.debug("时间检查: 发送时间={}, 当前时间={}, 相差{}分钟", sendTime, now, diffMinutes);
             
             if (diffMinutes > 5) {
                 throw new BusinessException(ResultCode.BAD_REQUEST, "消息发送超过5分钟，无法撤回");
@@ -283,7 +297,7 @@ public class MessageServiceImpl implements MessageService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void markMessagesAsRead(List<Long> messageIds, Long userId) {
-        log.info("标记消息已读，userId: {}, messageCount: {}", userId, messageIds.size());
+        log.debug("标记消息已读，userId: {}, messageCount: {}", userId, messageIds.size());
         
         if (messageIds == null || messageIds.isEmpty()) {
             return;
@@ -291,7 +305,7 @@ public class MessageServiceImpl implements MessageService {
         
         try {
             messageMapper.batchInsertReadRecords(messageIds, userId);
-            log.info("标记消息已读成功");
+            log.debug("标记消息已读成功");
         } catch (Exception e) {
             log.error("标记消息已读失败", e);
             // 如果是重复记录，不抛出异常

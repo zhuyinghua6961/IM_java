@@ -41,7 +41,8 @@ public class MessageKafkaConsumer {
     public void consumeMessage(ConsumerRecord<String, String> record, Acknowledgment ack) {
         try {
             String messageValue = record.value();
-            log.debug("收到Kafka消息: {}", messageValue);
+            log.debug("收到Kafka消息: topic={}, partition={}, offset={}, key={}, value={}",
+                record.topic(), record.partition(), record.offset(), record.key(), messageValue);
             
             JSONObject json = JSON.parseObject(messageValue);
             String action = json.getString("action");
@@ -80,6 +81,8 @@ public class MessageKafkaConsumer {
             log.info("消息已撤回，跳过持久化: {}", messageId);
             // 清理Redis详情
             redisTemplate.delete(RedisKeyConstant.getMessageDetailKey(messageId));
+            // 从PENDING集合中移除
+            removeFromPending(messageId);
             return;
         }
         
@@ -106,6 +109,8 @@ public class MessageKafkaConsumer {
                 log.warn("消息已存在数据库，跳过插入: {}", messageId);
                 // 更新Redis状态
                 updateRedisPersistStatus(messageId);
+                // 从PENDING集合中移除
+                removeFromPending(messageId);
                 return;
             }
             
@@ -124,6 +129,8 @@ public class MessageKafkaConsumer {
             
             // 更新Redis中的持久化状态
             updateRedisPersistStatus(messageId);
+            // 从PENDING集合中移除
+            removeFromPending(messageId);
             
         } finally {
             // 释放锁
@@ -174,6 +181,17 @@ public class MessageKafkaConsumer {
                 TimeUnit.MINUTES
             );
             log.debug("更新Redis持久化状态: messageId={}", messageId);
+        }
+    }
+
+    /**
+     * 从PENDING ZSet中移除已处理消息
+     */
+    private void removeFromPending(Long messageId) {
+        try {
+            redisTemplate.opsForZSet().remove(RedisKeyConstant.PENDING_MESSAGE_ZSET_KEY, String.valueOf(messageId));
+        } catch (Exception e) {
+            log.warn("从PENDING集合移除消息失败: messageId={}", messageId, e);
         }
     }
 }

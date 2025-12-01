@@ -290,9 +290,10 @@ class MessageSyncManager {
    * 获取当前用户ID
    */
   getCurrentUserId() {
-    // 从localStorage或其他地方获取当前用户ID
+    // 从localStorage获取当前用户ID
     const userInfo = JSON.parse(localStorage.getItem('userInfo') || '{}')
-    return userInfo.id
+    // 优先使用 userId 字段，兼容老数据的 id 字段
+    return userInfo.userId || userInfo.id
   }
   
   /**

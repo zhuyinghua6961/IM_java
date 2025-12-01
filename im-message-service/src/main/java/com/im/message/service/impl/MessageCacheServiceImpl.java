@@ -59,20 +59,14 @@ public class MessageCacheServiceImpl implements MessageCacheService {
         );
         log.debug("缓存消息详情: messageId={}", messageId);
         
+        // 将PENDING消息加入待补偿ZSet，按发送时间排序
+        long sendTimeMillis = message.getSendTime() != null ?
+            message.getSendTime().atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli() :
+            System.currentTimeMillis();
+        redisTemplate.opsForZSet().add(RedisKeyConstant.PENDING_MESSAGE_ZSET_KEY, messageId, sendTimeMillis);
+        
         // 2. 添加到会话消息列表（只针对单聊）
-        if (message.getChatType() == 1) {
-            String conversationId = generateConversationId(message.getFromUserId(), message.getToId());
-            String convKey = RedisKeyConstant.getConversationMessagesKey(conversationId);
-            
-            // 左侧插入（最新消息在前）
-            redisTemplate.opsForList().leftPush(convKey, JSON.toJSONString(message));
-            // 只保留最近N条
-            redisTemplate.opsForList().trim(convKey, 0, convCacheSize - 1);
-            // 设置过期时间
-            redisTemplate.expire(convKey, cacheExpireMinutes, TimeUnit.MINUTES);
-            
-            log.debug("缓存会话消息: conversationId={}, messageId={}", conversationId, messageId);
-        }
+        appendToConversationList(message);
         
         // 3. 发送到Kafka异步持久化
         try {
@@ -185,30 +179,8 @@ public class MessageCacheServiceImpl implements MessageCacheService {
                 TimeUnit.MINUTES
             );
             
-            // 2. 更新会话列表中的消息（单聊消息才有会话列表）
-            if (cachedMsg.getChatType() == 1) {
-                String conversationId = generateConversationId(cachedMsg.getFromUserId(), cachedMsg.getToId());
-                String convKey = RedisKeyConstant.getConversationMessagesKey(conversationId);
-                
-                // 获取会话列表
-                List<String> messageJsonList = redisTemplate.opsForList().range(convKey, 0, -1);
-                if (messageJsonList != null && !messageJsonList.isEmpty()) {
-                    // 找到并替换该消息
-                    for (int i = 0; i < messageJsonList.size(); i++) {
-                        try {
-                            Message msg = JSON.parseObject(messageJsonList.get(i), Message.class);
-                            if (msg.getId().equals(messageId)) {
-                                // 找到了，更新这条消息
-                                redisTemplate.opsForList().set(convKey, i, JSON.toJSONString(cachedMsg));
-                                log.info("已更新会话列表中的撤回消息: conversationId={}, messageId={}", conversationId, messageId);
-                                break;
-                            }
-                        } catch (Exception e) {
-                            log.error("解析会话消息JSON失败", e);
-                        }
-                    }
-                }
-            }
+            // 2. 更新会话列表中的消息
+            updateRecalledInConversationList(cachedMsg);
             
             log.info("消息撤回状态已更新到Redis: messageId={}", messageId);
         }
@@ -245,7 +217,75 @@ public class MessageCacheServiceImpl implements MessageCacheService {
         redisTemplate.expire(deletedKey, cacheExpireMinutes, TimeUnit.MINUTES);
         log.debug("标记消息已删除（Redis）: userId={}, messageId={}", userId, messageId);
     }
-    
+
+    private void appendToConversationList(Message message) {
+        String messageId = String.valueOf(message.getId());
+
+        if (message.getChatType() == 1) {
+            String conversationId = generateConversationId(message.getFromUserId(), message.getToId());
+            String convKey = RedisKeyConstant.getConversationMessagesKey(conversationId);
+
+            redisTemplate.opsForList().leftPush(convKey, JSON.toJSONString(message));
+            redisTemplate.opsForList().trim(convKey, 0, convCacheSize - 1);
+            redisTemplate.expire(convKey, cacheExpireMinutes, TimeUnit.MINUTES);
+
+            log.debug("缓存会话消息: conversationId={}, messageId={}", conversationId, messageId);
+        } else if (message.getChatType() == 2) {
+            String conversationId = String.valueOf(message.getToId());
+            String convKey = RedisKeyConstant.getConversationMessagesKey(conversationId);
+
+            redisTemplate.opsForList().leftPush(convKey, JSON.toJSONString(message));
+            redisTemplate.opsForList().trim(convKey, 0, convCacheSize - 1);
+            redisTemplate.expire(convKey, cacheExpireMinutes, TimeUnit.MINUTES);
+
+            log.debug("缓存群聊会话消息: conversationId={}, messageId={}", conversationId, messageId);
+        }
+    }
+
+    private void updateRecalledInConversationList(Message cachedMsg) {
+        Long messageId = cachedMsg.getId();
+
+        if (cachedMsg.getChatType() == 1) {
+            String conversationId = generateConversationId(cachedMsg.getFromUserId(), cachedMsg.getToId());
+            String convKey = RedisKeyConstant.getConversationMessagesKey(conversationId);
+
+            List<String> messageJsonList = redisTemplate.opsForList().range(convKey, 0, -1);
+            if (messageJsonList != null && !messageJsonList.isEmpty()) {
+                for (int i = 0; i < messageJsonList.size(); i++) {
+                    try {
+                        Message msg = JSON.parseObject(messageJsonList.get(i), Message.class);
+                        if (msg.getId().equals(messageId)) {
+                            redisTemplate.opsForList().set(convKey, i, JSON.toJSONString(cachedMsg));
+                            log.info("已更新会话列表中的撤回消息: conversationId={}, messageId={}", conversationId, messageId);
+                            break;
+                        }
+                    } catch (Exception e) {
+                        log.error("解析会话消息JSON失败", e);
+                    }
+                }
+            }
+        } else if (cachedMsg.getChatType() == 2) {
+            String conversationId = String.valueOf(cachedMsg.getToId());
+            String convKey = RedisKeyConstant.getConversationMessagesKey(conversationId);
+
+            List<String> messageJsonList = redisTemplate.opsForList().range(convKey, 0, -1);
+            if (messageJsonList != null && !messageJsonList.isEmpty()) {
+                for (int i = 0; i < messageJsonList.size(); i++) {
+                    try {
+                        Message msg = JSON.parseObject(messageJsonList.get(i), Message.class);
+                        if (msg.getId().equals(messageId)) {
+                            redisTemplate.opsForList().set(convKey, i, JSON.toJSONString(cachedMsg));
+                            log.info("已更新群聊会话列表中的撤回消息: conversationId={}, messageId={}", conversationId, messageId);
+                            break;
+                        }
+                    } catch (Exception e) {
+                        log.error("解析群聊会话消息JSON失败", e);
+                    }
+                }
+            }
+        }
+    }
+
     @Override
     public String generateConversationId(Long userId1, Long userId2) {
         long min = Math.min(userId1, userId2);

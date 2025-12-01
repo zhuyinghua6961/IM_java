@@ -51,13 +51,12 @@
         WHERE id = #{id}
     </select>
 
-    <!-- 查询历史消息（分页），排除用户删除的消息 -->
+    <!-- 查询历史消息（分页），排除用户删除的消息（保留撤回消息，status=0 由前端展示撤回占位） -->
     <select id="selectHistoryMessages" resultMap="BaseResultMap">
         SELECT m.*
         FROM message m
         LEFT JOIN message_delete md ON m.id = md.message_id AND md.user_id = #{userId}
-        WHERE m.status = 1
-          AND md.id IS NULL
+        WHERE md.id IS NULL
         <choose>
             <when test="chatType == 1">
                 <!-- 单聊：查询双方的消息 -->
@@ -78,13 +77,12 @@
         LIMIT #{offset}, #{limit}
     </select>
 
-    <!-- 统计历史消息总数，排除用户删除的消息 -->
+    <!-- 统计历史消息总数，排除用户删除的消息（保留撤回消息） -->
     <select id="countHistoryMessages" resultType="int">
         SELECT COUNT(*)
         FROM message m
         LEFT JOIN message_delete md ON m.id = md.message_id AND md.user_id = #{userId}
-        WHERE m.status = 1
-          AND md.id IS NULL
+        WHERE md.id IS NULL
         <choose>
             <when test="chatType == 1">
                 <!-- 单聊：统计双方的消息 -->

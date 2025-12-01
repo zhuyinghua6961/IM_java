@@ -59,6 +59,8 @@ public class RedisKeyConstant {
      */
     public static final String MESSAGE_LOCK_PREFIX = "msg:lock:";
     
+    public static final String PENDING_MESSAGE_ZSET_KEY = "msg:pending";
+    
     /**
      * 持久化状态：待持久化
      */

@@ -66,6 +66,7 @@ spring:
       auto-offset-reset: earliest
     listener:
       ack-mode: manual
+      concurrency: 3
 
 # MyBatis配置
 mybatis:
