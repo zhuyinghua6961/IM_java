@@ -120,3 +120,4 @@ application-*.log
 
 # Local Spring profiles (do not commit secrets)
 im-message-service/src/main/resources/application-dev.yml
+im-user-service/src/main/resources/application-dev.yml
