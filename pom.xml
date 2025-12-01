@@ -44,6 +44,9 @@
         <!-- MinIO -->
         <minio.version>8.5.7</minio.version>
         
+        <!-- Aliyun OSS -->
+        <aliyun-oss.version>3.17.1</aliyun-oss.version>
+        
         <!-- JWT -->
         <jjwt.version>0.12.3</jjwt.version>
         
@@ -126,6 +129,13 @@
                 <groupId>io.minio</groupId>
                 <artifactId>minio</artifactId>
                 <version>${minio.version}</version>
+            </dependency>
+
+            <!-- Aliyun OSS SDK -->
+            <dependency>
+                <groupId>com.aliyun.oss</groupId>
+                <artifactId>aliyun-sdk-oss</artifactId>
+                <version>${aliyun-oss.version}</version>
             </dependency>
 
             <!-- JWT -->

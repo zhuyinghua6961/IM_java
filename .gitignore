@@ -117,3 +117,6 @@ dump.rdb
 # Application logs
 application.log
 application-*.log
+
+# Local Spring profiles (do not commit secrets)
+im-message-service/src/main/resources/application-dev.yml
