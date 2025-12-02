@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.im.user.mapper.UserFavoriteEmojiMapper">
+
+    <resultMap id="BaseResultMap" type="com.im.user.entity.UserFavoriteEmoji">
+        <id column="id" property="id"/>
+        <result column="user_id" property="userId"/>
+        <result column="url" property="url"/>
+        <result column="file_name" property="fileName"/>
+        <result column="size" property="size"/>
+        <result column="width" property="width"/>
+        <result column="height" property="height"/>
+        <result column="content_type" property="contentType"/>
+        <result column="status" property="status"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, user_id, url, file_name, size, width, height, content_type, status, create_time, update_time
+    </sql>
+
+    <!-- 插入收藏表情 -->
+    <insert id="insert" parameterType="com.im.user.entity.UserFavoriteEmoji" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO user_favorite_emoji (user_id, url, file_name, size, width, height, content_type, status)
+        VALUES (#{userId}, #{url}, #{fileName}, #{size}, #{width}, #{height}, #{contentType}, #{status})
+    </insert>
+
+    <!-- 根据用户ID查询收藏表情列表（仅正常状态） -->
+    <select id="selectByUserId" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM user_favorite_emoji
+        WHERE user_id = #{userId} AND status = 1
+        ORDER BY create_time DESC
+    </select>
+
+    <!-- 根据用户ID和URL查询收藏表情（包含已删除记录） -->
+    <select id="selectByUserIdAndUrl" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM user_favorite_emoji
+        WHERE user_id = #{userId} AND url = #{url}
+        LIMIT 1
+    </select>
+
+    <!-- 根据ID查询收藏表情 -->
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM user_favorite_emoji
+        WHERE id = #{id}
+    </select>
+
+    <!-- 更新状态（软删除或恢复） -->
+    <update id="updateStatusByIdAndUserId">
+        UPDATE user_favorite_emoji
+        SET status = #{status}, update_time = NOW()
+        WHERE id = #{id} AND user_id = #{userId}
+    </update>
+
+</mapper>

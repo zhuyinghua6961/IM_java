@@ -58,6 +58,13 @@
         WHERE id = #{id}
     </update>
 
+    <update id="updatePassword">
+        UPDATE user
+        SET password = #{password},
+            update_time = NOW()
+        WHERE id = #{id}
+    </update>
+
     <delete id="deleteById">
         UPDATE user SET status = 0, update_time = NOW() WHERE id = #{id}
     </delete>

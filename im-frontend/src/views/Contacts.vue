@@ -173,9 +173,9 @@
         <div v-else-if="activeTab === 'friends'">
           <div v-for="friend in friends" :key="friend.userId" class="contact-item">
             <el-avatar :size="40" :src="friend.avatar">
-              {{ friend.nickname?.charAt(0) }}
+              {{ (friend.remark || friend.nickname || friend.username)?.charAt(0) }}
             </el-avatar>
-            <span class="contact-name">{{ friend.nickname }}</span>
+            <span class="contact-name">{{ friend.remark || friend.nickname || friend.username }}</span>
             <el-dropdown trigger="click" @command="(cmd) => handleFriendAction(cmd, friend)">
               <el-button text :icon="MoreFilled" class="more-btn" />
               <template #dropdown>
@@ -183,6 +183,14 @@
                   <el-dropdown-item command="chat">
                     <el-icon><ChatDotRound /></el-icon>
                     <span>发送消息</span>
+                  </el-dropdown-item>
+                  <el-dropdown-item command="info">
+                    <el-icon><InfoFilled /></el-icon>
+                    <span>查看资料</span>
+                  </el-dropdown-item>
+                  <el-dropdown-item command="remark">
+                    <el-icon><Edit /></el-icon>
+                    <span>设置备注</span>
                   </el-dropdown-item>
                   <el-dropdown-item command="delete" divided>
                     <el-icon><Delete /></el-icon>
@@ -566,14 +574,72 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <!-- 好友资料对话框 -->
+    <el-dialog v-model="showFriendInfoDialog" title="好友资料" width="420px">
+      <div v-if="currentFriend" class="friend-info">
+        <div class="friend-info-header">
+          <el-avatar :size="64" :src="currentFriend.avatar">
+            {{ (currentFriend.remark || currentFriend.nickname || currentFriend.username)?.charAt(0) }}
+          </el-avatar>
+          <div class="friend-info-names">
+            <div class="friend-info-remark" v-if="currentFriend.remark">
+              {{ currentFriend.remark }}
+            </div>
+            <div class="friend-info-row">
+              昵称：{{ currentFriend.nickname || '未设置' }}
+            </div>
+            <div class="friend-info-row">
+              账号：{{ currentFriend.username }}
+            </div>
+          </div>
+        </div>
+        <div class="friend-info-section">
+          <div class="info-label">签名</div>
+          <div class="info-value">
+            {{ currentFriend.signature || '这个人很懒，还没有填写签名' }}
+          </div>
+        </div>
+        <div class="friend-info-section">
+          <div class="info-label">性别</div>
+          <div class="info-value">{{ formatGender(currentFriend.gender) }}</div>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="showFriendInfoDialog = false">关闭</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 设置备注对话框 -->
+    <el-dialog v-model="showRemarkDialog" title="设置备注" width="420px">
+      <el-form :model="remarkForm" label-width="80px">
+        <el-form-item label="好友">
+          <span>{{ currentFriend && (currentFriend.remark || currentFriend.nickname || currentFriend.username) }}</span>
+        </el-form-item>
+        <el-form-item label="备注名">
+          <el-input
+            v-model="remarkForm.remark"
+            maxlength="50"
+            show-word-limit
+            placeholder="输入备注名，留空则清除备注"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showRemarkDialog = false">取消</el-button>
+        <el-button type="primary" :loading="remarkLoading" @click="saveRemark">
+          保存
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { MoreFilled, ChatDotRound, Delete, InfoFilled, Close, Message, Plus, User, Bell, UserFilled } from '@element-plus/icons-vue'
-import { getFriendList, addFriend, handleFriendRequest } from '@/api/friend'
+import { MoreFilled, ChatDotRound, Delete, InfoFilled, Close, Message, Plus, User, Bell, UserFilled, Edit } from '@element-plus/icons-vue'
+import { getFriendList, addFriend, handleFriendRequest, updateFriendRemark } from '@/api/friend'
 import { searchUser } from '@/api/user'
 import { 
   getGroupList, 
@@ -603,6 +669,8 @@ const showCreateGroupDialog = ref(false)
 const showGroupInfoDialog = ref(false)
 const showGroupMembersDialog = ref(false)
 const showInviteMembersDialog = ref(false)
+const showFriendInfoDialog = ref(false)
+const showRemarkDialog = ref(false)
 const editingGroupInfo = ref(false)
 const savingGroupInfo = ref(false)
 const addLoading = ref(false)
@@ -615,9 +683,15 @@ const friendRequests = ref([])
 const groupInvitations = ref([])
 const groupNotifications = ref([])
 const currentGroup = ref(null)
+const currentFriend = ref(null)
 const groupMembers = ref([])
 const currentUserRole = ref(0)
 const selectedInviteMembers = ref([])
+const remarkForm = ref({
+  friendId: null,
+  remark: ''
+})
+const remarkLoading = ref(false)
 
 const searchInput = ref('')
 const searchResults = ref([])
@@ -680,6 +754,34 @@ const handleTabSelect = (index) => {
     markGroupNotificationsAsRead()
   } else if (index === 'groups') {
     loadGroupList()
+  }
+}
+
+// 保存备注
+const saveRemark = async () => {
+  if (!remarkForm.value.friendId) {
+    ElMessage.error('好友信息不存在')
+    return
+  }
+  try {
+    remarkLoading.value = true
+    const trimmed = remarkForm.value.remark && remarkForm.value.remark.trim()
+    const payload = {
+      friendId: remarkForm.value.friendId,
+      remark: trimmed || null
+    }
+    await updateFriendRemark(payload)
+    ElMessage.success('备注已更新')
+    const friend = friends.value.find(f => f.userId === remarkForm.value.friendId)
+    if (friend) {
+      friend.remark = payload.remark
+    }
+    showRemarkDialog.value = false
+  } catch (error) {
+    console.error('更新备注失败:', error)
+    ElMessage.error(error.response?.data?.message || '更新备注失败')
+  } finally {
+    remarkLoading.value = false
   }
 }
 
@@ -948,11 +1050,21 @@ const handleFriendAction = async (command, friend) => {
       query: {
         targetId: friend.userId,
         chatType: 1, // 1-单聊
-        targetName: friend.nickname,
+        targetName: friend.remark || friend.nickname,
         targetAvatar: friend.avatar
       }
     })
-    ElMessage.success(`即将和 ${friend.nickname} 聊天`)
+    ElMessage.success(`即将和 ${friend.remark || friend.nickname} 聊天`)
+  } else if (command === 'info') {
+    currentFriend.value = friend
+    showFriendInfoDialog.value = true
+  } else if (command === 'remark') {
+    currentFriend.value = friend
+    remarkForm.value = {
+      friendId: friend.userId,
+      remark: friend.remark || ''
+    }
+    showRemarkDialog.value = true
   } else if (command === 'delete') {
     // 删除好友 - 弹出确认对话框
     try {
@@ -1309,6 +1421,13 @@ const formatDateTime = (time) => {
   const hours = String(date.getHours()).padStart(2, '0')
   const minutes = String(date.getMinutes()).padStart(2, '0')
   return `${year}-${month}-${day} ${hours}:${minutes}`
+}
+
+// 格式化性别
+const formatGender = (gender) => {
+  if (gender === 1) return '男'
+  if (gender === 2) return '女'
+  return '保密'
 }
 
 onMounted(async () => {

@@ -33,6 +33,27 @@ CREATE TABLE `user` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户表';
 
 -- ----------------------------
+-- 用户收藏表情表
+-- ----------------------------
+DROP TABLE IF EXISTS `user_favorite_emoji`;
+CREATE TABLE `user_favorite_emoji` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `user_id` BIGINT NOT NULL COMMENT '用户ID',
+  `url` VARCHAR(500) NOT NULL COMMENT '表情图片OSS地址',
+  `file_name` VARCHAR(255) DEFAULT NULL COMMENT '文件名/自定义名称',
+  `size` BIGINT DEFAULT NULL COMMENT '文件大小(字节)',
+  `width` INT DEFAULT NULL COMMENT '图片宽度(像素)',
+  `height` INT DEFAULT NULL COMMENT '图片高度(像素)',
+  `content_type` VARCHAR(50) DEFAULT NULL COMMENT '内容类型(MIME)',
+  `status` TINYINT DEFAULT 1 COMMENT '状态 1-正常 0-删除',
+  `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  KEY `idx_user_status` (`user_id`, `status`),
+  UNIQUE KEY `uk_user_url` (`user_id`, `url`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户收藏表情表';
+
+-- ----------------------------
 -- 好友关系表
 -- ----------------------------
 DROP TABLE IF EXISTS `friend`;

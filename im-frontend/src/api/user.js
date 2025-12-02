@@ -44,6 +44,17 @@ export function updateUserInfo(data) {
 }
 
 /**
+ * 修改密码
+ */
+export function changePassword(data) {
+  return request({
+    url: '/user/password/change',
+    method: 'post',
+    data
+  })
+}
+
+/**
  * 搜索用户
  */
 export function searchUser(keyword) {

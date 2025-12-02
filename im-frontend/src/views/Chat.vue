@@ -168,103 +168,158 @@
                       </div>
                     </template>
                     <template v-else-if="msg.msgType === 4">
-                      <a
-                        class="file-message"
-                        :href="msg.url || getMediaUrlFromContent(msg)"
-                        target="_blank"
-                        @click.stop
-                      >
-                        {{ getFileName(msg) }}
-                      </a>
-                    </template>
-                    <template v-else>
-                      {{ msg.content }}
-                    </template>
-                    <!-- 悬停操作菜单 -->
-                    <div 
-                      v-if="hoveredMessageId === msg.id && !isRecalledMessage(msg) && !isSendingMessage(msg)" 
-                      class="message-actions"
+                    <a
+                      class="file-message"
+                      :href="msg.url || getMediaUrlFromContent(msg)"
+                      target="_blank"
+                      @click.stop
                     >
-                      <!-- 撤回按钮（仅自己的消息且5分钟内） -->
-                      <el-button 
-                        v-if="msg.fromUserId === currentUserId && canRecall(msg)"
-                        text 
-                        size="small" 
-                        @click="recallMessage(msg)"
-                        class="action-btn"
-                        title="撤回消息"
-                      >
-                        撤回
-                      </el-button>
-                      <!-- 删除按钮（所有消息都可以删除） -->
-                      <el-button 
-                        text 
-                        size="small" 
-                        @click="deleteMessage(msg)"
-                        class="action-btn delete-btn"
-                        title="删除消息"
-                      >
-                        删除
-                      </el-button>
-                    </div>
+                      {{ getFileName(msg) }}
+                    </a>
                   </template>
-                </div>
+                  <template v-else>
+                    {{ msg.content }}
+                  </template>
+                  <!-- 悬停操作菜单 -->
+                  <div 
+                    v-if="hoveredMessageId === msg.id && !isRecalledMessage(msg) && !isSendingMessage(msg)" 
+                    class="message-actions"
+                  >
+                    <el-button 
+                      v-if="msg.msgType === 2"
+                      text 
+                      size="small" 
+                      @click="favoriteEmojiFromMessage(msg)"
+                      class="action-btn"
+                      title="收藏为表情"
+                    >
+                      收藏表情
+                    </el-button>
+                    <!-- 撤回按钮（仅自己的消息且5分钟内） -->
+                    <el-button 
+                      v-if="msg.fromUserId === currentUserId && canRecall(msg)"
+                      text 
+                      size="small" 
+                      @click="recallMessage(msg)"
+                      class="action-btn"
+                      title="撤回消息"
+                    >
+                      撤回
+                    </el-button>
+                    <!-- 删除按钮（所有消息都可以删除） -->
+                    <el-button 
+                      text 
+                      size="small" 
+                      @click="deleteMessage(msg)"
+                      class="action-btn delete-btn"
+                      title="删除消息"
+                    >
+                      删除
+                    </el-button>
+                  </div>
+                </template>
               </div>
             </div>
-            
-            <!-- 空消息状态 -->
-            <div v-if="messages.length === 0" class="empty-messages">
-              <el-empty description="暂无消息，开始聊天吧" />
-            </div>
           </div>
-        </el-scrollbar>
-        
-        <!-- 输入区域 -->
-        <div class="input-area">
-          <div class="input-toolbar">
-            <el-button text :icon="PictureFilled" title="发送图片或视频" @click="onSelectMedia" />
-            <el-button text :icon="Paperclip" title="发送文件" @click="onSelectFile" />
-            <el-button text :icon="ChatLineRound" title="表情" />
-            <el-button
-              text
-              :type="isRecording ? 'danger' : 'default'"
-              @click="toggleVoiceRecording"
-              :title="isRecording ? '点击停止并发送语音' : '点击开始录音，再次点击停止并发送'"
-            >
-              {{ isRecording ? '停止语音' : '语音' }}
-            </el-button>
-          </div>
-          <div class="input-box">
-            <el-input
-              v-model="inputMessage"
-              type="textarea"
-              :rows="4"
-              resize="none"
-              placeholder="按 Enter 发送，Shift + Enter 换行"
-              @keydown.enter="handleKeyDown"
-            />
-          </div>
-          <div class="input-actions">
-            <span class="text-count">{{ inputMessage.length }}/2000</span>
-            <el-button type="primary" @click="sendMessage" :disabled="!inputMessage.trim()">
-              发送
-            </el-button>
+          
+          <!-- 空消息状态 -->
+          <div v-if="messages.length === 0" class="empty-messages">
+            <el-empty description="暂无消息，开始聊天吧" />
           </div>
         </div>
-        <input
-          ref="mediaInputRef"
-          type="file"
-          accept="image/*,video/*"
-          style="display: none;"
-          @change="handleMediaChange"
-        />
-        <input
-          ref="fileInputRef"
-          type="file"
-          style="display: none;"
-          @change="handleFileChange"
-        />
-      </template>
+      </el-scrollbar>
+      
+      <!-- 输入区域 -->
+      <div class="input-area">
+        <div class="input-toolbar">
+          <el-button text :icon="PictureFilled" title="发送图片或视频" @click="onSelectMedia" />
+          <el-button text :icon="Paperclip" title="发送文件" @click="onSelectFile" />
+          <el-popover
+            placement="top-start"
+            trigger="click"
+            width="320"
+            @show="onEmojiPanelShow"
+          >
+            <div class="emoji-panel">
+              <div class="emoji-panel-header">
+                <el-button type="primary" text size="small" @click="onSelectEmojiFile">
+                  添加表情
+                </el-button>
+              </div>
+              <div v-if="favoriteEmojis.length > 0" class="emoji-list">
+                <div
+                  v-for="emoji in favoriteEmojis"
+                  :key="emoji.id"
+                  class="emoji-item"
+                >
+                  <img
+                    :src="emoji.url"
+                    class="emoji-image"
+                    @click="sendEmoji(emoji)"
+                  />
+                  <el-button
+                    text
+                    size="small"
+                    class="emoji-delete-btn"
+                    @click.stop="removeEmoji(emoji)"
+                  >
+                    删除
+                  </el-button>
+                </div>
+              </div>
+              <el-empty v-else description="暂无收藏表情" />
+              <input
+                ref="emojiFileInputRef"
+                type="file"
+                accept="image/*"
+                style="display: none;"
+                @change="handleEmojiFileChange"
+              />
+            </div>
+            <template #reference>
+              <el-button text :icon="ChatLineRound" title="表情" />
+            </template>
+          </el-popover>
+          <el-button
+            text
+            :type="isRecording ? 'danger' : 'default'"
+            @click="toggleVoiceRecording"
+            :title="isRecording ? '点击停止并发送语音' : '点击开始录音，再次点击停止并发送'"
+          >
+            {{ isRecording ? '停止语音' : '语音' }}
+          </el-button>
+        </div>
+        <div class="input-box">
+          <el-input
+            v-model="inputMessage"
+            type="textarea"
+            :rows="4"
+            resize="none"
+            placeholder="按 Enter 发送，Shift + Enter 换行"
+            @keydown.enter="handleKeyDown"
+          />
+        </div>
+        <div class="input-actions">
+          <span class="text-count">{{ inputMessage.length }}/2000</span>
+          <el-button type="primary" @click="sendMessage" :disabled="!inputMessage.trim()">
+            发送
+          </el-button>
+        </div>
+      </div>
+      <input
+        ref="mediaInputRef"
+        type="file"
+        accept="image/*,video/*"
+        style="display: none;"
+        @change="handleMediaChange"
+      />
+      <input
+        ref="fileInputRef"
+        type="file"
+        style="display: none;"
+        @change="handleFileChange"
+      />
+    </template>
     </div>
   </div>
 </template>
@@ -308,6 +363,8 @@ const playingCurrentTime = ref(0)
 const playingTotalDuration = ref(0)
 const mediaInputRef = ref(null)
 const fileInputRef = ref(null)
+const emojiFileInputRef = ref(null)
+const favoriteEmojis = ref([])
 
 let mediaRecorder = null
 let recordedChunks = []
@@ -938,6 +995,135 @@ const uploadAndSendVideo = async (file) => {
   }
 
   await sendMediaMessage('video', url, size, fileName || file.name)
+}
+
+const onEmojiPanelShow = async () => {
+  try {
+    const res = await request.get('/emoji/list')
+    let list = Array.isArray(res.data) ? res.data : []
+    // 按添加时间倒序排列（id 越大越靠前）
+    list = list.slice().sort((a, b) => {
+      const idA = Number(a && a.id ? a.id : 0)
+      const idB = Number(b && b.id ? b.id : 0)
+      return idB - idA
+    })
+    favoriteEmojis.value = list
+  } catch (error) {
+    console.error('加载收藏表情失败:', error)
+    ElMessage.error('加载收藏表情失败')
+  }
+}
+
+const onSelectEmojiFile = () => {
+  if (!emojiFileInputRef.value) return
+  emojiFileInputRef.value.click()
+}
+
+const handleEmojiFileChange = async (event) => {
+  const file = event.target.files && event.target.files[0]
+  event.target.value = ''
+  if (!file) return
+  if (!file.type.startsWith('image/')) {
+    ElMessage.warning('请选择图片文件')
+    return
+  }
+  try {
+    await uploadAndAddEmoji(file)
+  } catch (error) {
+    console.error('添加表情失败:', error)
+    ElMessage.error('添加表情失败')
+  }
+}
+
+const uploadAndAddEmoji = async (file) => {
+  const formData = new FormData()
+  formData.append('file', file)
+
+  const res = await request.post('/files/upload/image', formData)
+  const { url, size, fileName } = res.data || {}
+
+  if (!url) {
+    throw new Error('上传表情失败：未返回URL')
+  }
+
+  const emojiRes = await request.post('/emoji', {
+    url,
+    fileName: fileName || file.name,
+    size
+  })
+
+  const emoji = emojiRes.data
+  if (emoji) {
+    const exists = favoriteEmojis.value.find(item => item.id === emoji.id)
+    if (!exists) {
+      favoriteEmojis.value.unshift(emoji)
+    }
+  }
+  ElMessage.success('已添加到收藏表情')
+}
+
+const sendEmoji = async (emoji) => {
+  if (!selectedConv.value) {
+    ElMessage.warning('请先选择一个会话')
+    return
+  }
+  await sendMediaMessage('image', emoji.url, emoji.size, emoji.fileName)
+}
+
+const removeEmoji = async (emoji) => {
+  try {
+    await request.delete(`/emoji/${emoji.id}`)
+    const index = favoriteEmojis.value.findIndex(item => item.id === emoji.id)
+    if (index !== -1) {
+      favoriteEmojis.value.splice(index, 1)
+    }
+    ElMessage.success('已删除表情')
+  } catch (error) {
+    console.error('删除表情失败:', error)
+    ElMessage.error('删除表情失败')
+  }
+}
+
+const favoriteEmojiFromMessage = async (message) => {
+  if (!message || message.msgType !== 2) return
+  const url = message.url || getMediaUrlFromContent(message)
+  if (!url) {
+    ElMessage.error('找不到图片地址')
+    return
+  }
+
+  let fileName = '表情'
+  let size = undefined
+  try {
+    if (message.content) {
+      const obj = typeof message.content === 'string' ? JSON.parse(message.content) : message.content
+      if (obj) {
+        if (obj.fileName) fileName = obj.fileName
+        if (obj.size) size = obj.size
+      }
+    }
+  } catch (error) {
+    console.warn('解析图片消息内容失败:', error)
+  }
+
+  try {
+    const res = await request.post('/emoji', {
+      url,
+      fileName,
+      size
+    })
+    const emoji = res.data
+    if (emoji) {
+      const exists = favoriteEmojis.value.find(item => item.id === emoji.id)
+      if (!exists) {
+        favoriteEmojis.value.unshift(emoji)
+      }
+    }
+    ElMessage.success('已收藏为表情')
+  } catch (error) {
+    console.error('收藏表情失败:', error)
+    ElMessage.error('收藏表情失败')
+  }
 }
 
 const onSelectFile = () => {
@@ -2001,6 +2187,42 @@ const scrollToBottom = () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.emoji-panel {
+  padding: 8px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.emoji-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.emoji-item {
+  width: 60px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.emoji-image {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  border-radius: 4px;
+  cursor: pointer;
+  border: 1px solid #f0f0f0;
+  background: #fff;
+}
+
+.emoji-delete-btn {
+  padding: 0 4px !important;
+  min-height: auto !important;
+  font-size: 12px !important;
 }
 
 .text-count {

@@ -5,6 +5,7 @@ import com.im.common.vo.Result;
 import com.im.user.context.UserContext;
 import com.im.user.dto.LoginDTO;
 import com.im.user.dto.UserDTO;
+import com.im.user.dto.ChangePasswordDTO;
 import com.im.user.service.UserService;
 import com.im.user.vo.LoginVO;
 import com.im.user.vo.UserVO;
@@ -65,6 +66,16 @@ public class UserController {
         }
         
         userService.updateUser(userId, userDTO);
+        return Result.success();
+    }
+
+    @PostMapping("/password/change")
+    public Result<Void> changePassword(@RequestBody ChangePasswordDTO dto) {
+        Long userId = UserContext.getCurrentUserId();
+        if (userId == null) {
+            return Result.error(ResultCode.UNAUTHORIZED);
+        }
+        userService.changePassword(userId, dto);
         return Result.success();
     }
 

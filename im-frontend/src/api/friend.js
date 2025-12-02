@@ -51,3 +51,14 @@ export function deleteFriend(friendId) {
     method: 'delete'
   })
 }
+
+/**
+ * 更新好友备注
+ */
+export function updateFriendRemark(data) {
+  return request({
+    url: '/friend/remark',
+    method: 'post',
+    data
+  })
+}

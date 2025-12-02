@@ -1,7 +1,7 @@
 # IM Chat System - API 接口设计文档
 
-**版本**: v2.0  
-**更新时间**: 2025-11-27  
+**版本**: v2.1  
+**更新时间**: 2025-12-02  
 
 **📌 接口状态说明**:  
 - ✅ **已实现** - 功能完整，已上线可用
@@ -188,6 +188,8 @@ Content-Type: application/json
   "nickname": "张三三",
   "avatar": "https://xxx.com/new-avatar.jpg",
   "gender": 1,
+  "phone": "13800138000",
+  "email": "user001@im.com",
   "signature": "新的个性签名"
 }
 ```
@@ -219,6 +221,48 @@ Content-Type: application/json
   ]
 }
 ```
+
+---
+
+### 2.7 发送短信验证码 ✅
+
+**接口地址**: `POST /api/user/sms/send`
+
+**请求参数**:
+
+```json
+{
+  "phone": "13800138000"
+}
+```
+
+**说明**:
+- 向指定手机号发送 6 位数字验证码
+- 同一手机号发送频率限制（如 60s 内只能发送一次）
+
+---
+
+### 2.8 修改密码 ✅
+
+**接口地址**: `POST /api/user/password/change`
+
+**说明**: 需同时校验原密码 + 短信验证码
+
+**请求参数**:
+
+```json
+{
+  "oldPassword": "123456",        // 原密码
+  "newPassword": "654321",        // 新密码（至少6位）
+  "code": "123456"                // 短信验证码
+}
+```
+
+**业务规则**:
+- 当前登录用户才能修改自己的密码
+- 账号必须已绑定手机号
+- 原密码错误时返回业务错误码 `1002`/`PASSWORD_ERROR`
+- 验证码错误或过期返回 `400 BAD_REQUEST`
 
 ---
 
@@ -342,26 +386,33 @@ Content-Type: application/json
 
 ---
 
-### 3.6 修改好友备注 🚧
+### 3.6 修改好友备注 ✅
 
-**接口地址**: `PUT /api/friend/{friendId}/remark`
+**接口地址**: `POST /api/friend/remark`
+
+**说明**: 为当前登录用户修改某个好友的备注名
 
 **请求参数**:
+
 ```json
 {
-  "remark": "老同学张三"
+  "friendId": 2,
+  "remark": "老同学张三"   // 为空或 null 表示清除备注
 }
 ```
 
 **响应数据**:
+
 ```json
 {
   "code": 200,
-  "message": "修改成功"
+  "message": "success"
 }
 ```
 
-**说明**: 待实现功能
+**业务规则**:
+- `friendId` 必须是当前用户的有效好友
+- 备注只对当前用户可见，不会影响对方看到的昵称
 
 ---
 
@@ -794,7 +845,68 @@ Content-Type: application/json
 
 ---
 
-### 5.6 消息搜索 🚧
+### 5.6 文件上传（媒体/文件） ✅
+
+**接口前缀**: `im-message-service`
+
+#### 5.6.1 上传语音
+
+**接口地址**: `POST /api/files/upload/audio`
+
+**请求类型**: `multipart/form-data`
+
+**请求参数**:
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| file | File | 语音文件，建议格式 mp3/aac/m4a |
+
+**响应数据**:
+
+```json
+{
+  "code": 200,
+  "data": {
+    "url": "https://oss-bucket/voice/2025/12/02/xxx.mp3",
+    "size": 12345,
+    "fileName": "voice.mp3"
+  }
+}
+```
+
+#### 5.6.2 上传图片
+
+**接口地址**: `POST /api/files/upload/image`
+
+**请求类型**: `multipart/form-data`
+
+**说明**: 聊天图片、用户头像等均使用该接口上传到 OSS。
+
+**响应结构**与上传语音一致。
+
+#### 5.6.3 上传视频
+
+**接口地址**: `POST /api/files/upload/video`
+
+**请求类型**: `multipart/form-data`
+
+**说明**: 聊天视频消息上传到 OSS。
+
+**响应结构**与上传语音一致。
+
+#### 5.6.4 上传通用文件
+
+**接口地址**: `POST /api/files/upload/file`
+
+**请求类型**: `multipart/form-data`
+
+**说明**: 聊天文件消息（如 pdf/doc/zip）；前端根据 `url` 提供下载/打开功能。
+
+**响应结构**与上传语音一致。
+
+---
+
+### 5.7 消息搜索 🚧
 
 **接口地址**: `GET /api/message/search`
 
@@ -987,7 +1099,6 @@ Content-Type: application/json
 
 ### 优先级 P0（核心功能）
 
-- [ ] 好友备注修改
 - [ ] 在线状态显示
 - [ ] 群主转让
 - [ ] 群昵称修改

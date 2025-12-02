@@ -13,6 +13,7 @@ public interface UserMapper {
     User selectByUsername(@Param("username") String username);
     User selectByPhone(@Param("phone") String phone);
     int update(UserDTO user);
+    int updatePassword(@Param("id") Long id, @Param("password") String password);
     int deleteById(@Param("id") Long id);
     List<User> selectList(@Param("keyword") String keyword);
 }

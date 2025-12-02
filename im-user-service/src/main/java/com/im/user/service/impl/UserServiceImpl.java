@@ -5,6 +5,7 @@ import com.im.common.exception.BusinessException;
 import com.im.common.utils.JwtUtil;
 import com.im.user.dto.LoginDTO;
 import com.im.user.dto.UserDTO;
+import com.im.user.dto.ChangePasswordDTO;
 import com.im.user.entity.User;
 import com.im.user.mapper.UserMapper;
 import com.im.user.service.SmsCodeService;
@@ -231,6 +232,54 @@ public class UserServiceImpl implements UserService {
         userDTO.setId(userId);
         userMapper.update(userDTO);
         log.info("用户信息更新成功");
+    }
+    
+    @Override
+    public void changePassword(Long userId, ChangePasswordDTO dto) {
+        log.info("修改密码，userId: {}", userId);
+
+        if (dto == null || dto.getOldPassword() == null || dto.getNewPassword() == null
+                || dto.getOldPassword().isEmpty() || dto.getNewPassword().isEmpty()) {
+            throw new BusinessException(ResultCode.BAD_REQUEST, "密码不能为空");
+        }
+
+        // 1. 查询用户
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new BusinessException(ResultCode.USER_NOT_EXIST);
+        }
+
+        if (user.getPhone() == null || user.getPhone().isEmpty()) {
+            throw new BusinessException(ResultCode.BAD_REQUEST, "当前账号未绑定手机号，无法通过短信验证码修改密码");
+        }
+
+        // 2. 校验旧密码
+        String oldEncrypted = encryptPassword(dto.getOldPassword());
+        if (!oldEncrypted.equals(user.getPassword())) {
+            throw new BusinessException(ResultCode.PASSWORD_ERROR, "原密码不正确");
+        }
+
+        // 3. 校验短信验证码
+        if (dto.getCode() == null || dto.getCode().isEmpty()) {
+            throw new BusinessException(ResultCode.BAD_REQUEST, "验证码不能为空");
+        }
+        if (!smsCodeService.verifyCode(user.getPhone(), dto.getCode())) {
+            throw new BusinessException(ResultCode.BAD_REQUEST, "验证码错误或已过期");
+        }
+
+        // 4. 校验新密码简单规则（长度）
+        if (dto.getNewPassword().length() < 6) {
+            throw new BusinessException(ResultCode.BAD_REQUEST, "新密码长度不能小于6位");
+        }
+
+        // 5. 更新为新密码
+        String newEncrypted = encryptPassword(dto.getNewPassword());
+        userMapper.updatePassword(userId, newEncrypted);
+
+        // 6. 清除验证码
+        smsCodeService.clearCode(user.getPhone());
+
+        log.info("修改密码成功，userId: {}", userId);
     }
     
     /**

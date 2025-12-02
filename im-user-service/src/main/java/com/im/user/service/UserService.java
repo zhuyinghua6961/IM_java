@@ -2,6 +2,7 @@ package com.im.user.service;
 
 import com.im.user.dto.LoginDTO;
 import com.im.user.dto.UserDTO;
+import com.im.user.dto.ChangePasswordDTO;
 import com.im.user.vo.LoginVO;
 import com.im.user.vo.UserVO;
 
@@ -30,6 +31,11 @@ public interface UserService {
      * 更新用户信息
      */
     void updateUser(Long userId, UserDTO userDTO);
+    
+    /**
+     * 修改密码
+     */
+    void changePassword(Long userId, ChangePasswordDTO dto);
     
     /**
      * 搜索用户

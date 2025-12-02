@@ -4,6 +4,7 @@ import com.im.common.enums.ResultCode;
 import com.im.common.exception.BusinessException;
 import com.im.user.context.UserContext;
 import com.im.user.dto.FriendRequestDTO;
+import com.im.user.dto.FriendRemarkDTO;
 import com.im.user.entity.Friend;
 import com.im.user.entity.FriendRequest;
 import com.im.user.entity.User;
@@ -270,5 +271,31 @@ public class FriendServiceImpl implements FriendService {
         }
         
         log.info("删除好友成功，双向关系已解除");
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void updateRemark(FriendRemarkDTO dto) {
+        Long userId = UserContext.getCurrentUserId();
+        if (userId == null) {
+            throw new BusinessException(ResultCode.UNAUTHORIZED);
+        }
+        if (dto == null || dto.getFriendId() == null) {
+            throw new BusinessException(ResultCode.BAD_REQUEST, "好友ID不能为空");
+        }
+
+        Long friendId = dto.getFriendId();
+        log.info("更新好友备注，userId: {}, friendId: {}, remark: {}", userId, friendId, dto.getRemark());
+
+        Friend friendship = friendMapper.selectActiveFriendship(userId, friendId);
+        if (friendship == null) {
+            throw new BusinessException(ResultCode.BAD_REQUEST, "好友关系不存在或已删除");
+        }
+
+        friendship.setRemark(dto.getRemark());
+        friendship.setStatus(1);
+        friendMapper.updateById(friendship);
+
+        log.info("更新好友备注成功，userId: {}, friendId: {}", userId, friendId);
     }
 }

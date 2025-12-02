@@ -3,6 +3,7 @@ package com.im.user.controller;
 import java.util.List;
 
 import com.im.common.vo.Result;
+import com.im.user.dto.FriendRemarkDTO;
 import com.im.user.dto.FriendRequestDTO;
 import com.im.user.entity.FriendRequest;
 import com.im.user.service.FriendService;
@@ -70,8 +71,17 @@ public class FriendController {
      * 删除好友
      */
     @DeleteMapping("/{friendId}")
-    public Result deleteFriend(@PathVariable("friendId") Long friendId) {
+    public Result<Void> deleteFriend(@PathVariable("friendId") Long friendId) {
         friendService.deleteFriend(friendId);
+        return Result.success();
+    }
+
+    /**
+     * 更新好友备注
+     */
+    @PostMapping("/remark")
+    public Result<Void> updateRemark(@RequestBody FriendRemarkDTO dto) {
+        friendService.updateRemark(dto);
         return Result.success();
     }
 }

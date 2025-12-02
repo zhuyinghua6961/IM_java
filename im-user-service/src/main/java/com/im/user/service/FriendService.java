@@ -1,6 +1,7 @@
 package com.im.user.service;
 
 import com.im.user.dto.FriendRequestDTO;
+import com.im.user.dto.FriendRemarkDTO;
 import com.im.user.entity.FriendRequest;
 import com.im.user.vo.FriendVO;
 import java.util.List;
@@ -31,6 +32,12 @@ public interface FriendService {
      * @return 处理后的好友申请记录
      */
     FriendRequest handleFriendRequest(FriendRequestDTO dto);
+
+    /**
+     * 更新好友备注
+     * @param dto 备注更新请求
+     */
+    void updateRemark(FriendRemarkDTO dto);
 
     void deleteFriend(Long friendId);
 }
