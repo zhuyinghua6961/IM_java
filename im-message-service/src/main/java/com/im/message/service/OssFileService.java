@@ -18,4 +18,10 @@ public interface OssFileService {
      * @throws IOException IO 异常
      */
     Map<String, Object> uploadAudio(MultipartFile file) throws IOException;
+
+    Map<String, Object> uploadImage(MultipartFile file) throws IOException;
+
+    Map<String, Object> uploadVideo(MultipartFile file) throws IOException;
+
+    Map<String, Object> uploadFile(MultipartFile file) throws IOException;
 }

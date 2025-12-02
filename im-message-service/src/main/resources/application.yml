@@ -97,15 +97,10 @@ logging:
 # 自定义配置
 im:
   oss:
-    # OSS 服务访问域名，例如：https://oss-cn-hangzhou.aliyuncs.com
-    endpoint: https://oss-cn-hangzhou.aliyuncs.com
-    # 访问密钥，请不要提交真实值到公共仓库，推荐用环境变量或本地 yml 覆盖
-    access-key-id: your-access-key-id
-    access-key-secret: your-access-key-secret
-    # 存储语音等 IM 文件的 Bucket 名称
-    bucket-name: your-bucket-name
-    # 对外访问域名（可选，支持自定义域名/CDN 加速域名），末尾不加斜杠
-    domain: https://your-bucket-name.oss-cn-hangzhou.aliyuncs.com
+    endpoint: ${im.oss.endpoint}
+    access-key-id: ${im.oss.access-key-id}
+    access-key-secret: ${im.oss.access-key-secret}
+    bucket-name: ${im.oss.bucket-name}
   message:
     # 会话缓存消息数量
     conv-cache-size: 1000

@@ -27,15 +27,31 @@ public class OssFileServiceImpl implements OssFileService {
 
     @Value("${im.oss.bucket-name}")
     private String bucketName;
-
-    /**
-     * 对外访问域名，如：https://your-bucket.oss-cn-hangzhou.aliyuncs.com
-     */
-    @Value("${im.oss.domain}")
-    private String domain;
+    
+    @Value("${im.oss.endpoint}")
+    private String endpoint;
 
     @Override
     public Map<String, Object> uploadAudio(MultipartFile file) throws IOException {
+        return uploadFileToOss(file, "audio");
+    }
+
+    @Override
+    public Map<String, Object> uploadImage(MultipartFile file) throws IOException {
+        return uploadFileToOss(file, "image");
+    }
+
+    @Override
+    public Map<String, Object> uploadVideo(MultipartFile file) throws IOException {
+        return uploadFileToOss(file, "video");
+    }
+
+    @Override
+    public Map<String, Object> uploadFile(MultipartFile file) throws IOException {
+        return uploadFileToOss(file, "file");
+    }
+
+    private Map<String, Object> uploadFileToOss(MultipartFile file, String folder) throws IOException {
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("上传文件不能为空");
         }
@@ -43,7 +59,7 @@ public class OssFileServiceImpl implements OssFileService {
         String originalFilename = file.getOriginalFilename();
         long size = file.getSize();
 
-        // 按日期分目录存储：audio/yyyy/MM/dd/{uuid}.{ext}
+        // 按日期分目录存储：{folder}/yyyy/MM/dd/{uuid}.{ext}
         LocalDate today = LocalDate.now();
         String datePath = today.getYear() + "/" + String.format("%02d", today.getMonthValue()) + "/" + String.format("%02d", today.getDayOfMonth());
 
@@ -51,7 +67,7 @@ public class OssFileServiceImpl implements OssFileService {
         if (originalFilename != null && originalFilename.contains(".")) {
             ext = originalFilename.substring(originalFilename.lastIndexOf('.'));
         }
-        String objectName = "audio/" + datePath + "/" + UUID.randomUUID() + ext;
+        String objectName = folder + "/" + datePath + "/" + UUID.randomUUID() + ext;
 
         log.info("上传文件到OSS: bucket={}, objectName={}, originalName={}, size={}",
                 bucketName, objectName, originalFilename, size);
@@ -60,7 +76,19 @@ public class OssFileServiceImpl implements OssFileService {
             ossClient.putObject(bucketName, objectName, inputStream);
         }
 
-        String url = domain.endsWith("/") ? (domain + objectName) : (domain + "/" + objectName);
+        // 这里使用 "bucketName.endpoint/objectName" 的路径形式，如：https://your-bucket.oss-cn-hangzhou.aliyuncs.com/object
+        String normalizedEndpoint = endpoint;
+        if (normalizedEndpoint.endsWith("/")) {
+            normalizedEndpoint = normalizedEndpoint.substring(0, normalizedEndpoint.length() - 1);
+        }
+        String scheme = "https";
+        String hostPart = normalizedEndpoint;
+        int schemeIndex = normalizedEndpoint.indexOf("://");
+        if (schemeIndex > 0) {
+            scheme = normalizedEndpoint.substring(0, schemeIndex);
+            hostPart = normalizedEndpoint.substring(schemeIndex + 3);
+        }
+        String url = scheme + "://" + bucketName + "." + hostPart + "/" + objectName;
 
         Map<String, Object> result = new HashMap<>(4);
         result.put("url", url);

@@ -40,4 +40,46 @@ public class FileController {
             return Result.error("上传语音文件失败，请稍后重试");
         }
     }
+
+    @PostMapping("/upload/image")
+    public Result<Map<String, Object>> uploadImage(@RequestPart("file") MultipartFile file) {
+        try {
+            Map<String, Object> data = ossFileService.uploadImage(file);
+            return Result.success(data);
+        } catch (IllegalArgumentException e) {
+            log.warn("上传图片文件参数错误: {}", e.getMessage());
+            return Result.error(e.getMessage());
+        } catch (IOException e) {
+            log.error("上传图片文件到OSS失败", e);
+            return Result.error("上传图片失败，请稍后重试");
+        }
+    }
+
+    @PostMapping("/upload/video")
+    public Result<Map<String, Object>> uploadVideo(@RequestPart("file") MultipartFile file) {
+        try {
+            Map<String, Object> data = ossFileService.uploadVideo(file);
+            return Result.success(data);
+        } catch (IllegalArgumentException e) {
+            log.warn("上传视频文件参数错误: {}", e.getMessage());
+            return Result.error(e.getMessage());
+        } catch (IOException e) {
+            log.error("上传视频文件到OSS失败", e);
+            return Result.error("上传视频失败，请稍后重试");
+        }
+    }
+
+    @PostMapping("/upload/file")
+    public Result<Map<String, Object>> uploadFile(@RequestPart("file") MultipartFile file) {
+        try {
+            Map<String, Object> data = ossFileService.uploadFile(file);
+            return Result.success(data);
+        } catch (IllegalArgumentException e) {
+            log.warn("上传文件参数错误: {}", e.getMessage());
+            return Result.error(e.getMessage());
+        } catch (IOException e) {
+            log.error("上传文件到OSS失败", e);
+            return Result.error("上传文件失败，请稍后重试");
+        }
+    }
 }

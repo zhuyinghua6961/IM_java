@@ -85,6 +85,7 @@ class WebSocketClient {
         id: String(data.messageId),
         fromUserId: data.fromUserId,
         content: data.content,
+        url: data.url,
         msgType: data.msgType,
         sendTime: new Date(data.timestamp),
         status: 1

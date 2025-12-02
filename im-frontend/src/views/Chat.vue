@@ -136,7 +136,50 @@
                     <span class="sending-indicator">发送中...</span>
                   </template>
                   <template v-else>
-                    {{ msg.content }}
+                    <template v-if="msg.msgType === 2">
+                      <img
+                        class="image-message"
+                        :src="msg.url || getMediaUrlFromContent(msg)"
+                        @click.stop="previewImage(msg)"
+                      />
+                    </template>
+                    <template v-else-if="msg.msgType === 3">
+                      <video
+                        class="video-message"
+                        :src="msg.url || getMediaUrlFromContent(msg)"
+                        controls
+                      />
+                    </template>
+                    <template v-else-if="msg.msgType === 5">
+                      <div
+                        class="voice-message"
+                        :class="{ playing: playingMessageId === msg.id }"
+                        @click="playVoice(msg)"
+                      >
+                        <span class="voice-label">语音</span>
+                        <span class="voice-duration">
+                          <template v-if="playingMessageId === msg.id && playingCurrentTime > 0">
+                            {{ formatVoiceSecond(playingCurrentTime) }} / {{ getVoiceDurationText(msg) }}
+                          </template>
+                          <template v-else>
+                            {{ getVoiceDurationText(msg) }}
+                          </template>
+                        </span>
+                      </div>
+                    </template>
+                    <template v-else-if="msg.msgType === 4">
+                      <a
+                        class="file-message"
+                        :href="msg.url || getMediaUrlFromContent(msg)"
+                        target="_blank"
+                        @click.stop
+                      >
+                        {{ getFileName(msg) }}
+                      </a>
+                    </template>
+                    <template v-else>
+                      {{ msg.content }}
+                    </template>
                     <!-- 悬停操作菜单 -->
                     <div 
                       v-if="hoveredMessageId === msg.id && !isRecalledMessage(msg) && !isSendingMessage(msg)" 
@@ -179,9 +222,17 @@
         <!-- 输入区域 -->
         <div class="input-area">
           <div class="input-toolbar">
-            <el-button text :icon="PictureFilled" title="发送图片" />
-            <el-button text :icon="Paperclip" title="发送文件" />
+            <el-button text :icon="PictureFilled" title="发送图片或视频" @click="onSelectMedia" />
+            <el-button text :icon="Paperclip" title="发送文件" @click="onSelectFile" />
             <el-button text :icon="ChatLineRound" title="表情" />
+            <el-button
+              text
+              :type="isRecording ? 'danger' : 'default'"
+              @click="toggleVoiceRecording"
+              :title="isRecording ? '点击停止并发送语音' : '点击开始录音，再次点击停止并发送'"
+            >
+              {{ isRecording ? '停止语音' : '语音' }}
+            </el-button>
           </div>
           <div class="input-box">
             <el-input
@@ -200,6 +251,19 @@
             </el-button>
           </div>
         </div>
+        <input
+          ref="mediaInputRef"
+          type="file"
+          accept="image/*,video/*"
+          style="display: none;"
+          @change="handleMediaChange"
+        />
+        <input
+          ref="fileInputRef"
+          type="file"
+          style="display: none;"
+          @change="handleFileChange"
+        />
       </template>
     </div>
   </div>
@@ -214,7 +278,7 @@ import {
   Plus, 
   MoreFilled, 
   PictureFilled, 
-  Paperclip, 
+  Paperclip,
   ChatLineRound,
   Top,
   Bottom,
@@ -238,6 +302,18 @@ const inputMessage = ref('')
 const messages = ref([])
 const messageScrollbar = ref(null)
 const hoveredMessageId = ref(null) // 当前悬停的消息ID
+const isRecording = ref(false)
+const playingMessageId = ref(null)
+const playingCurrentTime = ref(0)
+const playingTotalDuration = ref(0)
+const mediaInputRef = ref(null)
+const fileInputRef = ref(null)
+
+let mediaRecorder = null
+let recordedChunks = []
+let recordStartTime = 0
+let currentAudio = null
+let mediaRecorderMimeType = ''
 
 // 会话列表宽度控制
 const conversationListWidth = ref(280)
@@ -465,6 +541,7 @@ const loadHistoryMessages = async () => {
             fromUserId: msg.fromUserId,
             content: msg.content,
             msgType: msg.msgType,
+            url: msg.url,
             sendTime: new Date(msg.sendTime),
             status: msg.status,
             nickname: nickname,
@@ -711,6 +788,470 @@ const sendMessage = () => {
   
   // WebSocket发送是异步的，消息状态会通过WebSocket回调更新
   // 如果发送失败，临时消息会保持"发送中"状态，用户可以重试
+}
+
+// 语音录制开关（目前只支持单聊）
+const toggleVoiceRecording = async () => {
+  if (!selectedConv.value) {
+    ElMessage.warning('请先选择一个会话')
+    return
+  }
+  if (!isRecording.value) {
+    await startRecording()
+  } else {
+    await stopRecording()
+  }
+}
+
+const startRecording = async () => {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    recordedChunks = []
+    const options = {}
+    // 优先使用 Chrome 支持较好的 audio/webm;codecs=opus
+    if (window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+      options.mimeType = 'audio/webm;codecs=opus'
+      mediaRecorderMimeType = options.mimeType
+    } else {
+      mediaRecorderMimeType = ''
+    }
+
+    mediaRecorder = new MediaRecorder(stream, options)
+
+    mediaRecorder.ondataavailable = (event) => {
+      if (event.data && event.data.size > 0) {
+        recordedChunks.push(event.data)
+      }
+    }
+
+    mediaRecorder.onstop = async () => {
+      const blobType = mediaRecorderMimeType || 'audio/webm'
+      const blob = new Blob(recordedChunks, { type: blobType })
+      const duration = (Date.now() - recordStartTime) / 1000
+      isRecording.value = false
+
+      // 释放麦克风
+      if (mediaRecorder && mediaRecorder.stream) {
+        mediaRecorder.stream.getTracks().forEach(track => track.stop())
+      }
+
+      try {
+        await uploadAndSendVoice(blob, duration)
+      } catch (error) {
+        console.error('发送语音失败:', error)
+        ElMessage.error('发送语音失败')
+      }
+    }
+
+    mediaRecorder.start()
+    recordStartTime = Date.now()
+    isRecording.value = true
+  } catch (error) {
+    console.error('无法开始录音:', error)
+    ElMessage.error('无法访问麦克风，请检查浏览器权限')
+  }
+}
+
+const stopRecording = async () => {
+  if (mediaRecorder && isRecording.value) {
+    mediaRecorder.stop()
+  }
+}
+
+const uploadAndSendVoice = async (blob, duration) => {
+  if (!blob || blob.size === 0) {
+    ElMessage.warning('录音太短，未发送')
+    return
+  }
+
+  const formData = new FormData()
+  formData.append('file', blob, 'voice-message.webm')
+
+  const res = await request.post('/files/upload/audio', formData)
+  const { url, size } = res.data || {}
+
+  if (!url) {
+    throw new Error('上传语音失败：未返回URL')
+  }
+
+  await sendVoiceMessage(url, duration, size)
+}
+
+const onSelectMedia = () => {
+  if (!selectedConv.value) {
+    ElMessage.warning('请先选择一个会话')
+    return
+  }
+  if (mediaInputRef.value) {
+    mediaInputRef.value.click()
+  }
+}
+
+const handleMediaChange = async (event) => {
+  const file = event.target.files && event.target.files[0]
+  event.target.value = ''
+  if (!file) return
+  if (file.type.startsWith('image/')) {
+    try {
+      await uploadAndSendImage(file)
+    } catch (error) {
+      console.error('发送图片失败:', error)
+      ElMessage.error('发送图片失败')
+    }
+    return
+  }
+  if (file.type.startsWith('video/')) {
+    try {
+      await uploadAndSendVideo(file)
+    } catch (error) {
+      console.error('发送视频失败:', error)
+      ElMessage.error('发送视频失败')
+    }
+    return
+  }
+  ElMessage.warning('只支持发送图片或视频文件')
+}
+
+const uploadAndSendImage = async (file) => {
+  const formData = new FormData()
+  formData.append('file', file)
+
+  const res = await request.post('/files/upload/image', formData)
+  const { url, size, fileName } = res.data || {}
+
+  if (!url) {
+    throw new Error('上传图片失败：未返回URL')
+  }
+
+  await sendMediaMessage('image', url, size, fileName || file.name)
+}
+
+const uploadAndSendVideo = async (file) => {
+  const formData = new FormData()
+  formData.append('file', file)
+
+  const res = await request.post('/files/upload/video', formData)
+  const { url, size, fileName } = res.data || {}
+
+  if (!url) {
+    throw new Error('上传视频失败：未返回URL')
+  }
+
+  await sendMediaMessage('video', url, size, fileName || file.name)
+}
+
+const onSelectFile = () => {
+  if (!selectedConv.value) {
+    ElMessage.warning('请先选择一个会话')
+    return
+  }
+  if (fileInputRef.value) {
+    fileInputRef.value.click()
+  }
+}
+
+const handleFileChange = async (event) => {
+  const file = event.target.files && event.target.files[0]
+  event.target.value = ''
+  if (!file) return
+  try {
+    await uploadAndSendFile(file)
+  } catch (error) {
+    console.error('发送文件失败:', error)
+    ElMessage.error('发送文件失败')
+  }
+}
+
+const uploadAndSendFile = async (file) => {
+  const formData = new FormData()
+  formData.append('file', file)
+
+  const res = await request.post('/files/upload/file', formData)
+  const { url, size, fileName } = res.data || {}
+
+  if (!url) {
+    throw new Error('上传文件失败：未返回URL')
+  }
+
+  await sendMediaMessage('file', url, size, fileName || file.name)
+}
+
+const sendMediaMessage = async (type, url, size, fileName) => {
+  if (!selectedConv.value) return
+
+  let msgType
+  if (type === 'image') {
+    msgType = 2
+  } else if (type === 'video') {
+    msgType = 3
+  } else if (type === 'file') {
+    msgType = 4
+  } else {
+    msgType = 1
+  }
+
+  const meta = {
+    url,
+    size,
+    fileName,
+    type
+  }
+  const content = JSON.stringify(meta)
+
+  const messageData = {
+    chatType: selectedConv.value.chatType,
+    msgType,
+    content,
+    url
+  }
+
+  if (selectedConv.value.chatType === 1) {
+    messageData.toUserId = selectedConv.value.targetId
+  } else if (selectedConv.value.chatType === 2) {
+    messageData.groupId = selectedConv.value.targetId
+  }
+
+  const tempId = 'temp-' + Date.now()
+
+  const tempMessage = {
+    id: tempId,
+    fromUserId: currentUserId.value,
+    content,
+    url,
+    msgType,
+    sendTime: new Date(),
+    status: 0,
+    nickname: userStore.userInfo?.nickname || '我'
+  }
+
+  messages.value.push(tempMessage)
+  scrollToBottom()
+
+  console.log('🔵 开始发送媒体消息，临时ID:', tempId, '类型:', type)
+  wsClient.sendMessage(messageData, (error, ackData) => {
+    console.log('🔵 收到媒体ACK回调', { error, ackData, tempId })
+
+    if (error) {
+      console.error('❌ 媒体消息发送失败:', error)
+      const msgIndex = messages.value.findIndex(m => m.id === tempId)
+      if (msgIndex !== -1) {
+        messages.value[msgIndex].status = -1
+      }
+      return
+    }
+
+    const msgIndex = messages.value.findIndex(m => m.id === tempId)
+    if (msgIndex !== -1) {
+      const oldId = messages.value[msgIndex].id
+      messages.value[msgIndex].id = String(ackData.messageId)
+      messages.value[msgIndex].status = 1
+      console.log(`✅ 媒体消息ID已更新: ${oldId} -> ${ackData.messageId}`)
+    } else {
+      console.error('❌ 未找到临时媒体消息:', tempId)
+    }
+  })
+}
+
+const sendVoiceMessage = async (url, duration, size) => {
+  if (!selectedConv.value) return
+
+  const meta = {
+    url,
+    duration,
+    size
+  }
+  const content = JSON.stringify(meta)
+
+  const messageData = {
+    chatType: selectedConv.value.chatType,
+    msgType: 5, // 5-语音消息
+    content,
+    url
+  }
+
+  if (selectedConv.value.chatType === 1) {
+    messageData.toUserId = selectedConv.value.targetId
+  } else if (selectedConv.value.chatType === 2) {
+    messageData.groupId = selectedConv.value.targetId
+  }
+
+  const tempId = 'temp-' + Date.now()
+
+  const tempMessage = {
+    id: tempId,
+    fromUserId: currentUserId.value,
+    content,
+    url,
+    msgType: 5,
+    sendTime: new Date(),
+    status: 0,
+    nickname: userStore.userInfo?.nickname || '我'
+  }
+
+  messages.value.push(tempMessage)
+  scrollToBottom()
+
+  console.log('🔵 开始发送语音消息，临时ID:', tempId)
+  wsClient.sendMessage(messageData, (error, ackData) => {
+    console.log('🔵 收到语音ACK回调', { error, ackData, tempId })
+
+    if (error) {
+      console.error('❌ 语音消息发送失败:', error)
+      const msgIndex = messages.value.findIndex(m => m.id === tempId)
+      if (msgIndex !== -1) {
+        messages.value[msgIndex].status = -1
+      }
+      return
+    }
+
+    const msgIndex = messages.value.findIndex(m => m.id === tempId)
+    if (msgIndex !== -1) {
+      const oldId = messages.value[msgIndex].id
+      messages.value[msgIndex].id = String(ackData.messageId)
+      messages.value[msgIndex].status = 1
+      console.log(`✅ 语音消息ID已更新: ${oldId} -> ${ackData.messageId}`)
+    } else {
+      console.error('❌ 未找到临时语音消息:', tempId)
+    }
+  })
+}
+
+const getVoiceMeta = (message) => {
+  if (!message || message.msgType !== 5) return {}
+  try {
+    if (typeof message.content === 'string') {
+      return JSON.parse(message.content) || {}
+    }
+    return message.content || {}
+  } catch (error) {
+    console.warn('解析语音消息内容失败:', error)
+    return {}
+  }
+}
+
+const getMediaUrlFromContent = (message) => {
+  if (!message || !message.content) return ''
+  try {
+    if (typeof message.content === 'string') {
+      const obj = JSON.parse(message.content)
+      return obj && obj.url ? obj.url : ''
+    }
+    if (message.content && message.content.url) {
+      return message.content.url
+    }
+  } catch (error) {
+    console.warn('解析媒体消息内容失败:', error)
+  }
+  return ''
+}
+
+const getFileName = (message) => {
+  if (!message) return '文件'
+  try {
+    if (typeof message.content === 'string' && message.content) {
+      const obj = JSON.parse(message.content)
+      if (obj && obj.fileName) {
+        return obj.fileName
+      }
+    } else if (message.content && message.content.fileName) {
+      return message.content.fileName
+    }
+  } catch (error) {
+    console.warn('解析文件消息内容失败:', error)
+  }
+  return '文件'
+}
+
+const getVoiceDurationText = (message) => {
+  const meta = getVoiceMeta(message)
+  if (meta && meta.duration) {
+    const sec = Math.max(1, Math.round(meta.duration))
+    return `${sec}″`
+  }
+  return ''
+}
+
+const formatVoiceSecond = (sec) => {
+  if (!sec || sec <= 0) return '0″'
+  const s = Math.floor(sec)
+  return `${s}″`
+}
+
+const previewImage = (message) => {
+  const url = message.url || getMediaUrlFromContent(message)
+  if (!url) {
+    ElMessage.error('找不到图片地址')
+    return
+  }
+  window.open(url, '_blank')
+}
+
+const playVoice = (message) => {
+  if (!message || message.msgType !== 5) return
+
+  let url = message.url
+  if (!url) {
+    const meta = getVoiceMeta(message)
+    url = meta.url
+  }
+
+  if (!url) {
+    ElMessage.error('找不到语音地址')
+    return
+  }
+
+  // 再次点击当前播放的语音，认为是暂停
+  if (playingMessageId.value === message.id && currentAudio) {
+    currentAudio.pause()
+    currentAudio = null
+    playingMessageId.value = null
+    playingCurrentTime.value = 0
+    return
+  }
+
+  if (currentAudio) {
+    currentAudio.pause()
+    currentAudio = null
+  }
+
+  const audio = new Audio()
+
+  // 检测浏览器是否支持当前语音格式（主要是 audio/webm / opus）
+  const canPlayWebm = audio.canPlayType('audio/webm') || audio.canPlayType('audio/webm; codecs=opus')
+  if (!canPlayWebm) {
+    ElMessage.error('当前浏览器不支持语音格式，请使用最新版 Chrome 再试')
+    return
+  }
+
+  const meta = getVoiceMeta(message)
+  if (meta && meta.duration) {
+    playingTotalDuration.value = meta.duration
+  } else {
+    playingTotalDuration.value = 0
+  }
+  playingCurrentTime.value = 0
+
+  audio.src = url
+  currentAudio = audio
+  playingMessageId.value = message.id
+
+  audio.play().catch(error => {
+    console.error('播放语音失败:', error)
+    ElMessage.error('播放语音失败')
+    playingMessageId.value = null
+    currentAudio = null
+    playingCurrentTime.value = 0
+  })
+
+  audio.ontimeupdate = () => {
+    playingCurrentTime.value = audio.currentTime
+  }
+
+  audio.onended = () => {
+    playingMessageId.value = null
+    currentAudio = null
+    playingCurrentTime.value = 0
+  }
 }
 
 // 处理键盘事件
@@ -1008,7 +1549,8 @@ const handleNewMessageUpdate = (data) => {
       id: String(data.messageId),
       fromUserId: data.fromUserId,
       content: data.content,
-      msgType: 1,
+      msgType: data.msgType,
+      url: data.url,
       sendTime: new Date(),
       status: 1,
       nickname: data.fromUserId === currentUserId.value ? 
@@ -1390,6 +1932,37 @@ const scrollToBottom = () => {
 
 .message-bubble {
   position: relative;
+}
+
+.voice-message {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.voice-message.playing .voice-label {
+  font-weight: 600;
+}
+
+.voice-label {
+  font-size: 14px;
+}
+
+.voice-duration {
+  font-size: 14px;
+  color: #606266;
+}
+
+.image-message {
+  max-width: 200px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.video-message {
+  max-width: 260px;
+  border-radius: 6px;
 }
 
 .empty-messages {
