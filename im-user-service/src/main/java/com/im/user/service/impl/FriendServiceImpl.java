@@ -5,14 +5,17 @@ import com.im.common.exception.BusinessException;
 import com.im.user.context.UserContext;
 import com.im.user.dto.FriendRequestDTO;
 import com.im.user.dto.FriendRemarkDTO;
+import com.im.user.entity.Blacklist;
 import com.im.user.entity.Friend;
 import com.im.user.entity.FriendRequest;
 import com.im.user.entity.User;
+import com.im.user.mapper.BlacklistMapper;
 import com.im.user.mapper.FriendMapper;
 import com.im.user.mapper.FriendRequestMapper;
 import com.im.user.mapper.UserMapper;
 import com.im.user.service.FriendService;
 import com.im.user.utils.WebSocketUtil;
+import com.im.user.vo.BlacklistVO;
 import com.im.user.vo.FriendVO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -38,6 +41,9 @@ public class FriendServiceImpl implements FriendService {
     
     @Autowired
     private WebSocketUtil webSocketUtil;
+    
+    @Autowired
+    private BlacklistMapper blacklistMapper;
     
     @Override
     public List<FriendVO> getFriendList() {
@@ -297,5 +303,123 @@ public class FriendServiceImpl implements FriendService {
         friendMapper.updateById(friendship);
 
         log.info("更新好友备注成功，userId: {}, friendId: {}", userId, friendId);
+    }
+    
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void blockUser(Long targetUserId) {
+        Long userId = UserContext.getCurrentUserId();
+        log.info("拉黑用户，userId: {}, targetUserId: {}", userId, targetUserId);
+        
+        if (userId == null) {
+            throw new BusinessException(ResultCode.UNAUTHORIZED, "用户未登录");
+        }
+        
+        if (targetUserId == null) {
+            throw new BusinessException(ResultCode.BAD_REQUEST, "目标用户ID不能为空");
+        }
+        
+        if (userId.equals(targetUserId)) {
+            throw new BusinessException(ResultCode.BAD_REQUEST, "不能拉黑自己");
+        }
+        
+        // 检查目标用户是否存在
+        User targetUser = userMapper.selectById(targetUserId);
+        if (targetUser == null) {
+            throw new BusinessException(ResultCode.NOT_FOUND, "目标用户不存在");
+        }
+        
+        // 检查是否已经拉黑
+        Blacklist existing = blacklistMapper.selectByUserIdAndBlockedUserId(userId, targetUserId);
+        if (existing != null) {
+            if (existing.getStatus() == 1) {
+                throw new BusinessException(ResultCode.BAD_REQUEST, "已经拉黑该用户");
+            }
+            // 重新激活拉黑记录
+            blacklistMapper.updateStatus(existing.getId(), 1);
+        } else {
+            // 创建新的拉黑记录
+            Blacklist blacklist = new Blacklist();
+            blacklist.setUserId(userId);
+            blacklist.setBlockedUserId(targetUserId);
+            blacklist.setStatus(1);
+            blacklistMapper.insert(blacklist);
+        }
+        
+        log.info("拉黑用户成功，userId: {}, targetUserId: {}", userId, targetUserId);
+    }
+    
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void unblockUser(Long targetUserId) {
+        Long userId = UserContext.getCurrentUserId();
+        log.info("取消拉黑，userId: {}, targetUserId: {}", userId, targetUserId);
+        
+        if (userId == null) {
+            throw new BusinessException(ResultCode.UNAUTHORIZED, "用户未登录");
+        }
+        
+        if (targetUserId == null) {
+            throw new BusinessException(ResultCode.BAD_REQUEST, "目标用户ID不能为空");
+        }
+        
+        // 查找拉黑记录
+        Blacklist existing = blacklistMapper.selectByUserIdAndBlockedUserId(userId, targetUserId);
+        if (existing == null || existing.getStatus() != 1) {
+            throw new BusinessException(ResultCode.BAD_REQUEST, "未拉黑该用户");
+        }
+        
+        // 更新状态为已解除
+        blacklistMapper.updateStatus(existing.getId(), 0);
+        
+        log.info("取消拉黑成功，userId: {}, targetUserId: {}", userId, targetUserId);
+    }
+    
+    @Override
+    public List<BlacklistVO> getBlacklist() {
+        Long userId = UserContext.getCurrentUserId();
+        log.info("获取黑名单列表，userId: {}", userId);
+        
+        if (userId == null) {
+            throw new BusinessException(ResultCode.UNAUTHORIZED, "用户未登录");
+        }
+        
+        // 查询黑名单
+        List<Blacklist> blacklist = blacklistMapper.selectByUserId(userId);
+        
+        // 转换为VO
+        List<BlacklistVO> result = new ArrayList<>();
+        for (Blacklist item : blacklist) {
+            BlacklistVO vo = new BlacklistVO();
+            vo.setId(item.getId());
+            vo.setBlockedUserId(item.getBlockedUserId());
+            vo.setCreateTime(item.getCreateTime());
+            
+            // 获取被拉黑用户信息
+            User blockedUser = userMapper.selectById(item.getBlockedUserId());
+            if (blockedUser != null) {
+                vo.setUsername(blockedUser.getUsername());
+                vo.setNickname(blockedUser.getNickname());
+                vo.setAvatar(blockedUser.getAvatar());
+            }
+            
+            result.add(vo);
+        }
+        
+        log.info("获取黑名单列表成功，userId: {}, count: {}", userId, result.size());
+        return result;
+    }
+    
+    @Override
+    public boolean isBlocked(Long targetUserId) {
+        Long userId = UserContext.getCurrentUserId();
+        
+        if (userId == null || targetUserId == null) {
+            return false;
+        }
+        
+        // 双向检查是否被拉黑
+        Blacklist blocked = blacklistMapper.checkBlocked(userId, targetUserId);
+        return blocked != null;
     }
 }

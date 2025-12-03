@@ -130,7 +130,30 @@ class WebSocketClient {
     this.stompClient.subscribe(errorQueue, (error) => {
       const data = JSON.parse(error.body)
       console.error('WebSocket错误:', data)
-      ElMessage.error(data.message)
+      
+      if (data.type === 'BLOCKED') {
+        // 被拉黑的情况
+        ElMessage.error({
+          message: data.message || '对方已将你拉黑，无法发送消息',
+          duration: 5000
+        })
+        // 触发消息发送失败事件，让聊天页面处理
+        window.dispatchEvent(new CustomEvent('messageSendBlocked', {
+          detail: {
+            blockedByUserId: data.blockedByUserId,
+            message: data.message
+          }
+        }))
+        // 清空待处理的回调（标记为失败）
+        if (this.pendingCallbacks && this.pendingCallbacks.length > 0) {
+          const pending = this.pendingCallbacks.shift()
+          if (pending && pending.callback) {
+            pending.callback(new Error('BLOCKED'), null)
+          }
+        }
+      } else {
+        ElMessage.error(data.message)
+      }
     })
   }
 

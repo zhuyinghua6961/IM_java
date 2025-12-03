@@ -16,6 +16,15 @@ public interface MessageService {
     Long sendMessage(Long fromUserId, MessageDTO messageDTO);
     
     /**
+     * 保存发送失败的消息（被拉黑等情况）
+     * @param fromUserId 发送者ID
+     * @param messageDTO 消息内容
+     * @param failureStatus 失败状态码：-1 被拉黑，-2 其他失败
+     * @return 消息ID
+     */
+    Long saveFailedMessage(Long fromUserId, MessageDTO messageDTO, Integer failureStatus);
+    
+    /**
      * 获取历史消息
      * @param userId 当前用户ID
      * @param targetId 对方ID（用户ID或群组ID）

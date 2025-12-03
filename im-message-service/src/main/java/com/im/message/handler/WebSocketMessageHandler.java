@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.im.common.context.UserContext;
 import com.im.message.dto.MessageDTO;
 import com.im.message.entity.GroupMember;
+import com.im.message.mapper.BlacklistMapper;
 import com.im.message.mapper.GroupMemberMapper;
 import com.im.message.service.MessageService;
 import lombok.extern.slf4j.Slf4j;
@@ -37,6 +38,9 @@ public class WebSocketMessageHandler {
     @Autowired
     private GroupMemberMapper groupMemberMapper;
     
+    @Autowired
+    private BlacklistMapper blacklistMapper;
+    
     /**
      * 处理客户端发送的消息
      * @MessageMapping("/message") 对应客户端发送到 /app/message
@@ -62,7 +66,23 @@ public class WebSocketMessageHandler {
             // 3. 解析消息内容
             MessageDTO messageDTO = objectMapper.convertValue(payload, MessageDTO.class);
             
-            // 4. 保存消息到数据库
+            // 4. 单聊时检查黑名单
+            if (messageDTO.getChatType() == 1) {
+                int blocked = blacklistMapper.isBlockedBy(messageDTO.getToUserId(), fromUserId);
+                if (blocked > 0) {
+                    log.warn("消息被拦截：发送者 {} 已被接收者 {} 拉黑", fromUserId, messageDTO.getToUserId());
+                    
+                    // 保存失败消息到数据库（状态码 -1 表示被拉黑）
+                    Long messageId = messageService.saveFailedMessage(fromUserId, messageDTO, -1);
+                    log.info("被拉黑消息已保存，messageId: {}", messageId);
+                    
+                    // 发送被拉黑通知给发送方（包含消息ID）
+                    sendBlockedMessage(headerAccessor.getSessionId(), messageDTO.getToUserId(), messageId);
+                    return;
+                }
+            }
+            
+            // 5. 保存消息到数据库
             Long messageId = messageService.sendMessage(fromUserId, messageDTO);
             log.info("=== 消息发送完成 messageId={} ===", messageId);
             
@@ -127,6 +147,25 @@ public class WebSocketMessageHandler {
         String destination = "/queue/error-" + sessionId;
         messagingTemplate.convertAndSend(destination, error);
         log.error("发送错误消息到: {}, error={}", destination, errorMsg);
+    }
+    
+    /**
+     * 发送被拉黑提示消息
+     * @param sessionId WebSocket session ID
+     * @param blockedByUserId 拉黑者的用户ID
+     * @param messageId 消息ID（已保存到数据库）
+     */
+    private void sendBlockedMessage(String sessionId, Long blockedByUserId, Long messageId) {
+        Map<String, Object> blocked = new HashMap<>();
+        blocked.put("type", "BLOCKED");
+        blocked.put("blockedByUserId", blockedByUserId);
+        blocked.put("messageId", String.valueOf(messageId));
+        blocked.put("message", "对方已将你拉黑，无法发送消息");
+        blocked.put("timestamp", System.currentTimeMillis());
+        
+        String destination = "/queue/error-" + sessionId;
+        messagingTemplate.convertAndSend(destination, blocked);
+        log.info("发送拉黑提示到: {}, blockedByUserId={}, messageId={}", destination, blockedByUserId, messageId);
     }
     
     /**

@@ -7,6 +7,7 @@ import com.im.user.dto.FriendRemarkDTO;
 import com.im.user.dto.FriendRequestDTO;
 import com.im.user.entity.FriendRequest;
 import com.im.user.service.FriendService;
+import com.im.user.vo.BlacklistVO;
 import com.im.user.vo.FriendVO;
 import lombok.extern.slf4j.Slf4j;
 
@@ -83,5 +84,41 @@ public class FriendController {
     public Result<Void> updateRemark(@RequestBody FriendRemarkDTO dto) {
         friendService.updateRemark(dto);
         return Result.success();
+    }
+    
+    /**
+     * 拉黑用户
+     */
+    @PostMapping("/block/{targetUserId}")
+    public Result<Void> blockUser(@PathVariable("targetUserId") Long targetUserId) {
+        friendService.blockUser(targetUserId);
+        return Result.success();
+    }
+    
+    /**
+     * 取消拉黑
+     */
+    @PostMapping("/unblock/{targetUserId}")
+    public Result<Void> unblockUser(@PathVariable("targetUserId") Long targetUserId) {
+        friendService.unblockUser(targetUserId);
+        return Result.success();
+    }
+    
+    /**
+     * 获取黑名单列表
+     */
+    @GetMapping("/blacklist")
+    public Result<List<BlacklistVO>> getBlacklist() {
+        List<BlacklistVO> blacklist = friendService.getBlacklist();
+        return Result.success(blacklist);
+    }
+    
+    /**
+     * 检查是否被拉黑
+     */
+    @GetMapping("/blocked/{targetUserId}")
+    public Result<Boolean> isBlocked(@PathVariable("targetUserId") Long targetUserId) {
+        boolean blocked = friendService.isBlocked(targetUserId);
+        return Result.success(blocked);
     }
 }

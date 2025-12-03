@@ -127,9 +127,15 @@
                   <span class="message-name">{{ msg.nickname }}</span>
                   <span class="message-time">{{ formatTime(msg.sendTime) }}</span>
                 </div>
-                <div class="message-bubble" :class="{ 'recalled': isRecalledMessage(msg), 'sending': isSendingMessage(msg) }">
+                <div class="message-bubble" :class="{ 'recalled': isRecalledMessage(msg), 'sending': isSendingMessage(msg), 'failed': isFailedMessage(msg) }">
                   <template v-if="isRecalledMessage(msg)">
                     <span class="recalled-text">{{ getRecalledText(msg) }}</span>
+                  </template>
+                  <template v-else-if="isFailedMessage(msg)">
+                    <span class="failed-text">{{ msg.content }}</span>
+                    <el-tooltip :content="msg.failedReason || '发送失败'" placement="top">
+                      <span class="failed-indicator">!</span>
+                    </el-tooltip>
                   </template>
                   <template v-else-if="isSendingMessage(msg)">
                     <span class="sending-text">{{ msg.content }}</span>
@@ -819,6 +825,17 @@ const sendMessage = () => {
       const msgIndex = messages.value.findIndex(m => m.id === tempId)
       if (msgIndex !== -1) {
         messages.value[msgIndex].status = -1 // -1-发送失败
+        // 如果后端返回了真实的消息ID，使用它替换临时ID
+        if (ackData && ackData.messageId) {
+          messages.value[msgIndex].id = String(ackData.messageId)
+          console.log('🔵 失败消息ID已更新:', ackData.messageId)
+        }
+        // 如果是被拉黑，添加特殊的失败原因
+        if (error.message === 'BLOCKED') {
+          messages.value[msgIndex].failedReason = '对方已将你拉黑，无法发送消息'
+        } else {
+          messages.value[msgIndex].failedReason = '发送失败，请检查网络'
+        }
       }
       return
     }
@@ -1582,6 +1599,11 @@ const isSendingMessage = (message) => {
   return message.status === 0 && String(message.id).startsWith('temp-')
 }
 
+// 检查是否为发送失败的消息
+const isFailedMessage = (message) => {
+  return message.status === -1
+}
+
 // 检查是否为已撤回的消息
 const isRecalledMessage = (message) => {
   return message.status === 0 && !String(message.id).startsWith('temp-')
@@ -2077,6 +2099,30 @@ const scrollToBottom = () => {
   font-size: 12px;
   color: #909399;
   margin-left: 8px;
+}
+
+/* 发送失败样式 */
+.message-bubble.failed {
+  opacity: 0.8;
+}
+
+.failed-text {
+  color: #303133;
+}
+
+.failed-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  background: #f56c6c;
+  color: white;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: bold;
+  margin-left: 8px;
+  cursor: pointer;
 }
 
 /* 消息操作按钮 */

@@ -91,4 +91,18 @@ public interface GroupService {
      * @return 更新后的群组信息
      */
     GroupVO updateGroup(Long groupId, GroupDTO groupDTO);
+
+    /**
+     * 设置当前用户在群内的个人昵称
+     * @param groupId 群组ID
+     * @param nickname 群昵称（为空或空字符串表示清除昵称）
+     */
+    void updateMyGroupNickname(Long groupId, String nickname);
+
+    /**
+     * 转让群主（群主专用）
+     * @param groupId 群组ID
+     * @param newOwnerId 新群主的用户ID
+     */
+    void transferOwner(Long groupId, Long newOwnerId);
 }

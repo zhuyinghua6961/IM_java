@@ -70,6 +70,7 @@
         UPDATE `group`
         SET group_name = #{groupName},
             avatar = #{avatar},
+            owner_id = #{ownerId},
             notice = #{notice},
             max_members = #{maxMembers},
             status = #{status},

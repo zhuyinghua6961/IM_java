@@ -62,3 +62,43 @@ export function updateFriendRemark(data) {
     data
   })
 }
+
+/**
+ * 拉黑用户
+ */
+export function blockUser(targetUserId) {
+  return request({
+    url: `/friend/block/${targetUserId}`,
+    method: 'post'
+  })
+}
+
+/**
+ * 取消拉黑
+ */
+export function unblockUser(targetUserId) {
+  return request({
+    url: `/friend/unblock/${targetUserId}`,
+    method: 'post'
+  })
+}
+
+/**
+ * 获取黑名单列表
+ */
+export function getBlacklist() {
+  return request({
+    url: '/friend/blacklist',
+    method: 'get'
+  })
+}
+
+/**
+ * 检查是否被拉黑
+ */
+export function checkBlocked(targetUserId) {
+  return request({
+    url: `/friend/blocked/${targetUserId}`,
+    method: 'get'
+  })
+}

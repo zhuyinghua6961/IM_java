@@ -91,3 +91,17 @@ export const removeMember = (groupId, userId) => {
 export const updateGroup = (groupId, groupData) => {
   return request.post(`/group/${groupId}/update`, groupData)
 }
+
+/**
+ * 设置当前用户在群内的个人昵称
+ */
+export const updateMyGroupNickname = (groupId, nickname) => {
+  return request.put(`/group/${groupId}/member/nickname`, { nickname })
+}
+
+/**
+ * 转让群主（群主专用）
+ */
+export const transferOwner = (groupId, newOwnerId) => {
+  return request.post(`/group/${groupId}/transfer`, { newOwnerId })
+}

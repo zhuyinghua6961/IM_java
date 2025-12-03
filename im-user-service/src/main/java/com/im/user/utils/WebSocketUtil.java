@@ -167,9 +167,10 @@ public class WebSocketUtil {
      * @param removedUserName 被移除用户昵称
      * @param groupId 群组ID
      * @param groupName 群组名称
+     * @param isRemovedUser 接收者是否是被移除的人
      */
     public void pushGroupRemoveNotification(Long toUserId, Long operatorId, String removedUserName,
-                                           Long groupId, String groupName) {
+                                           Long groupId, String groupName, boolean isRemovedUser) {
         try {
             Map<String, Object> notification = new HashMap<>();
             notification.put("type", "GROUP_MEMBER_REMOVED");
@@ -178,10 +179,14 @@ public class WebSocketUtil {
             notification.put("removedUserName", removedUserName);
             notification.put("groupId", groupId);
             notification.put("groupName", groupName);
-            notification.put("message", "您已被移出群组 " + groupName);
+            notification.put("isRemovedUser", isRemovedUser);
+            notification.put("message", isRemovedUser ? 
+                "您已被移出群组 " + groupName : 
+                removedUserName + " 已被移出群组 " + groupName);
             
             sendNotification(notification);
-            log.info("群组成员移除通知推送成功: user={}, operator={}, group={}", toUserId, operatorId, groupId);
+            log.info("群组成员移除通知推送成功: user={}, operator={}, group={}, isRemovedUser={}", 
+                    toUserId, operatorId, groupId, isRemovedUser);
         } catch (Exception e) {
             log.error("群组成员移除通知推送失败", e);
         }
@@ -334,6 +339,97 @@ public class WebSocketUtil {
             log.info("群组解散通知推送成功: member={}, owner={}, group={}", toUserId, ownerId, groupId);
         } catch (Exception e) {
             log.error("群组解散通知推送失败", e);
+        }
+    }
+    
+    /**
+     * 推送群主转让通知
+     * @param toUserId 接收方ID
+     * @param oldOwnerId 原群主ID
+     * @param oldOwnerName 原群主昵称
+     * @param groupId 群组ID
+     * @param groupName 群组名称
+     * @param isNewOwner 接收方是否是新群主
+     */
+    public void pushGroupOwnerTransferNotification(Long toUserId, Long oldOwnerId, String oldOwnerName,
+                                                   Long groupId, String groupName, boolean isNewOwner) {
+        try {
+            Map<String, Object> notification = new HashMap<>();
+            notification.put("type", "GROUP_OWNER_TRANSFER");
+            notification.put("toUserId", toUserId);
+            notification.put("oldOwnerId", oldOwnerId);
+            notification.put("oldOwnerName", oldOwnerName);
+            notification.put("groupId", groupId);
+            notification.put("groupName", groupName);
+            notification.put("isNewOwner", isNewOwner);
+            notification.put("message", isNewOwner ?
+                oldOwnerName + " 已将群组 " + groupName + " 的群主转让给您" :
+                "群组 " + groupName + " 的群主已变更");
+            
+            sendNotification(notification);
+            log.info("群主转让通知推送成功: receiver={}, oldOwner={}, isNewOwner={}, group={}", 
+                    toUserId, oldOwnerId, isNewOwner, groupId);
+        } catch (Exception e) {
+            log.error("群主转让通知推送失败", e);
+        }
+    }
+    
+    /**
+     * 推送群信息更新通知
+     * @param toUserId 接收方ID（群成员）
+     * @param operatorId 操作者ID（群主）
+     * @param operatorName 操作者昵称
+     * @param groupId 群组ID
+     * @param groupName 群组名称
+     * @param updateType 更新类型（name/avatar/notice）
+     */
+    public void pushGroupInfoUpdateNotification(Long toUserId, Long operatorId, String operatorName,
+                                                Long groupId, String groupName, String updateType) {
+        try {
+            Map<String, Object> notification = new HashMap<>();
+            notification.put("type", "GROUP_INFO_UPDATE");
+            notification.put("toUserId", toUserId);
+            notification.put("operatorId", operatorId);
+            notification.put("operatorName", operatorName);
+            notification.put("groupId", groupId);
+            notification.put("groupName", groupName);
+            notification.put("updateType", updateType);
+            
+            notification.put("message", operatorName + " 更新了群公告");
+            
+            sendNotification(notification);
+            log.info("群信息更新通知推送成功: receiver={}, operator={}, type={}, group={}", 
+                    toUserId, operatorId, updateType, groupId);
+        } catch (Exception e) {
+            log.error("群信息更新通知推送失败", e);
+        }
+    }
+    
+    /**
+     * 推送新成员加入通知
+     * @param toUserId 接收方ID（群成员）
+     * @param newMemberId 新成员ID
+     * @param newMemberName 新成员昵称
+     * @param groupId 群组ID
+     * @param groupName 群组名称
+     */
+    public void pushGroupNewMemberNotification(Long toUserId, Long newMemberId, String newMemberName,
+                                               Long groupId, String groupName) {
+        try {
+            Map<String, Object> notification = new HashMap<>();
+            notification.put("type", "GROUP_NEW_MEMBER");
+            notification.put("toUserId", toUserId);
+            notification.put("newMemberId", newMemberId);
+            notification.put("newMemberName", newMemberName);
+            notification.put("groupId", groupId);
+            notification.put("groupName", groupName);
+            notification.put("message", newMemberName + " 加入了群组 " + groupName);
+            
+            sendNotification(notification);
+            log.info("新成员加入通知推送成功: receiver={}, newMember={}, group={}", 
+                    toUserId, newMemberId, groupId);
+        } catch (Exception e) {
+            log.error("新成员加入通知推送失败", e);
         }
     }
     

@@ -13,6 +13,8 @@ class WebSocketClient {
     this.messageHandlers = []
     this.connectHandlers = []
     this.disconnectHandlers = []
+    this.sessionId = null
+    this.pendingCallbacks = []
   }
 
   // 连接 WebSocket
@@ -40,6 +42,71 @@ class WebSocketClient {
         
         // 触发连接处理器
         this.connectHandlers.forEach(handler => handler())
+        
+        // 获取 sessionId（从 socket 连接中提取）
+        try {
+          const url = socket._transport.url
+          const match = url.match(/\/ws\/\d+\/([^/]+)\/websocket/)
+          if (match) {
+            this.sessionId = match[1]
+            console.log('🔵 获取到 sessionId:', this.sessionId)
+          }
+        } catch (e) {
+          // 备用方案：生成随机 sessionId
+          this.sessionId = 'session-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9)
+          console.log('🔵 生成备用 sessionId:', this.sessionId)
+        }
+        
+        // 订阅 ACK 确认队列
+        const ackQueue = `/queue/ack-${this.sessionId}`
+        console.log('🔵 订阅ACK队列:', ackQueue)
+        this.stompClient.subscribe(ackQueue, (ack) => {
+          const data = JSON.parse(ack.body)
+          console.log('🟢 收到ACK确认:', data)
+          
+          if (this.pendingCallbacks && this.pendingCallbacks.length > 0) {
+            const pending = this.pendingCallbacks.shift()
+            if (pending && pending.callback) {
+              pending.callback(null, data)
+              console.log('✅ ACK回调已执行, messageId:', data.messageId)
+            }
+          }
+        })
+        
+        // 订阅错误消息队列
+        const errorQueue = `/queue/error-${this.sessionId}`
+        console.log('🔵 订阅错误队列:', errorQueue)
+        this.stompClient.subscribe(errorQueue, (error) => {
+          const data = JSON.parse(error.body)
+          console.error('❌ WebSocket错误:', data)
+          
+          if (data.type === 'BLOCKED') {
+            // 被拉黑的情况
+            ElMessage.error({
+              message: data.message || '对方已将你拉黑，无法发送消息',
+              duration: 5000
+            })
+            // 触发回调，传递真实的消息ID（后端已保存）
+            if (this.pendingCallbacks && this.pendingCallbacks.length > 0) {
+              const pending = this.pendingCallbacks.shift()
+              if (pending && pending.callback) {
+                // 传递错误和带有messageId的数据
+                const blockedError = new Error('BLOCKED')
+                blockedError.messageId = data.messageId
+                pending.callback(blockedError, { messageId: data.messageId, status: -1 })
+              }
+            }
+          } else {
+            ElMessage.error(data.message || '消息发送失败')
+            // 普通错误也触发回调
+            if (this.pendingCallbacks && this.pendingCallbacks.length > 0) {
+              const pending = this.pendingCallbacks.shift()
+              if (pending && pending.callback) {
+                pending.callback(new Error(data.message || 'ERROR'), null)
+              }
+            }
+          }
+        })
 
         // 订阅消息
         this.stompClient.subscribe('/user/queue/messages', (message) => {
@@ -67,7 +134,10 @@ class WebSocketClient {
             'GROUP_MEMBER_REMOVED',
             'GROUP_MEMBER_QUIT', 
             'GROUP_DIRECT_JOIN',
-            'GROUP_DISSOLVED'
+            'GROUP_DISSOLVED',
+            'GROUP_OWNER_TRANSFER',
+            'GROUP_INFO_UPDATE',
+            'GROUP_NEW_MEMBER'
           ]
           if (groupNotificationTypes.includes(data.type)) {
             window.dispatchEvent(new CustomEvent('groupNotification', { detail: data }))
@@ -110,33 +180,6 @@ class WebSocketClient {
               duration: 5000,
               position: 'top-right'
             })
-          } else if (data.type === 'GROUP_MEMBER_QUIT') {
-            // 群组成员退出通知（只有群主和管理员会收到）
-            ElNotification({
-              title: '群组成员退出',
-              message: data.message,
-              type: 'warning',
-              duration: 6000,
-              position: 'top-right'
-            })
-          } else if (data.type === 'GROUP_ADMIN_CHANGE') {
-            // 群组管理员变更通知
-            ElNotification({
-              title: data.isAdmin ? '您已成为管理员' : '管理员身份已取消',
-              message: data.message,
-              type: data.isAdmin ? 'success' : 'info',
-              duration: 8000,
-              position: 'top-right'
-            })
-          } else if (data.type === 'GROUP_DIRECT_JOIN') {
-            // 群组直接加入通知（白名单用户）
-            ElNotification({
-              title: '已加入群组',
-              message: data.message,
-              type: 'success',
-              duration: 6000,
-              position: 'top-right'
-            })
           } else if (data.type === 'GROUP_INVITE_APPROVAL') {
             // 群组邀请审批通知（管理员收到）
             ElNotification({
@@ -155,24 +198,18 @@ class WebSocketClient {
               duration: 8000,
               position: 'top-right'
             })
-          } else if (data.type === 'GROUP_DISSOLVED') {
-            // 群组解散通知
-            ElNotification({
-              title: '群组已解散',
-              message: data.message,
-              type: 'error',
-              duration: 10000,
-              position: 'top-right'
-            })
-          } else if (data.type === 'GROUP_MEMBER_REMOVED') {
-            // 群组成员被移除通知
-            ElNotification({
-              title: '您已被移出群组',
-              message: data.message,
-              type: 'warning',
-              duration: 8000,
-              position: 'top-right'
-            })
+          } else if ([
+            'GROUP_DISSOLVED',
+            'GROUP_MEMBER_REMOVED',
+            'GROUP_OWNER_TRANSFER',
+            'GROUP_INFO_UPDATE',
+            'GROUP_NEW_MEMBER',
+            'GROUP_ADMIN_CHANGE',
+            'GROUP_MEMBER_QUIT',
+            'GROUP_DIRECT_JOIN'
+          ].includes(data.type)) {
+            // 群组相关通知：不弹窗，只推送到群消息通知列表（通过 groupNotification 事件）
+            // 事件已在上面触发，这里不需要额外处理
           } else {
             // 其他类型通知
             ElNotification({
@@ -207,15 +244,28 @@ class WebSocketClient {
     )
   }
 
-  // 发送消息
-  sendMessage(message) {
+  // 发送消息（支持回调）
+  sendMessage(message, callback) {
     if (this.connected && this.stompClient) {
       console.log('发送WebSocket消息:', message)
+      
+      // 如果有回调，添加到待处理队列
+      if (callback) {
+        this.pendingCallbacks.push({
+          callback: callback,
+          timestamp: Date.now()
+        })
+        console.log('🔵 回调已加入队列, 当前队列长度:', this.pendingCallbacks.length)
+      }
+      
       this.stompClient.send('/app/message', {}, JSON.stringify(message))
       return true
     } else {
       console.error('WebSocket未连接，无法发送消息')
       ElMessage.error('连接已断开，请稍后重试')
+      if (callback) {
+        callback(new Error('WebSocket未连接'), null)
+      }
       return false
     }
   }

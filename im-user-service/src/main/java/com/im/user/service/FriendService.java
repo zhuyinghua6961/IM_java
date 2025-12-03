@@ -3,6 +3,7 @@ package com.im.user.service;
 import com.im.user.dto.FriendRequestDTO;
 import com.im.user.dto.FriendRemarkDTO;
 import com.im.user.entity.FriendRequest;
+import com.im.user.vo.BlacklistVO;
 import com.im.user.vo.FriendVO;
 import java.util.List;
 
@@ -40,4 +41,29 @@ public interface FriendService {
     void updateRemark(FriendRemarkDTO dto);
 
     void deleteFriend(Long friendId);
+    
+    /**
+     * 拉黑用户
+     * @param targetUserId 被拉黑的用户ID
+     */
+    void blockUser(Long targetUserId);
+    
+    /**
+     * 取消拉黑
+     * @param targetUserId 被拉黑的用户ID
+     */
+    void unblockUser(Long targetUserId);
+    
+    /**
+     * 获取黑名单列表
+     * @return 黑名单列表
+     */
+    List<BlacklistVO> getBlacklist();
+    
+    /**
+     * 检查是否被拉黑（双向）
+     * @param targetUserId 目标用户ID
+     * @return 是否被拉黑
+     */
+    boolean isBlocked(Long targetUserId);
 }

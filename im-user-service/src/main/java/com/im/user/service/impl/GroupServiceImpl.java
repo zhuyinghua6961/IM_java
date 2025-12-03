@@ -508,6 +508,18 @@ public class GroupServiceImpl implements GroupService {
             groupInvitationMapper.updateById(invitation);
             
             log.info("用户同意加入群组，userId: {}, groupId: {}", userId, invitation.getGroupId());
+            
+            // 通知群主和管理员有新成员加入
+            List<GroupMember> admins = groupMemberMapper.selectAdminsByGroupId(invitation.getGroupId());
+            for (GroupMember admin : admins) {
+                webSocketUtil.pushGroupNewMemberNotification(
+                    admin.getUserId(),
+                    userId,
+                    inviteeName,
+                    invitation.getGroupId(),
+                    groupName
+                );
+            }
         } else {
             // 8. 拒绝
             invitation.setStatus(4); // 被邀请人拒绝
@@ -632,6 +644,104 @@ public class GroupServiceImpl implements GroupService {
     
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public void updateMyGroupNickname(Long groupId, String nickname) {
+        Long userId = UserContext.getCurrentUserId();
+        log.info("更新群内个人昵称，userId: {}, groupId: {}, nickname: {}", userId, groupId, nickname);
+
+        if (userId == null) {
+            throw new BusinessException(ResultCode.UNAUTHORIZED, "用户未登录");
+        }
+
+        // 1. 校验群组存在且未解散
+        Group group = groupMapper.selectById(groupId);
+        if (group == null || group.getStatus() != 1) {
+            throw new BusinessException(ResultCode.NOT_FOUND, "群组不存在或已解散");
+        }
+
+        // 2. 校验当前用户是该群成员
+        GroupMember member = groupMemberMapper.selectByGroupIdAndUserId(groupId, userId);
+        if (member == null || member.getStatus() != 1) {
+            throw new BusinessException(ResultCode.FORBIDDEN, "您不是该群成员，无法设置群昵称");
+        }
+
+        // 3. 处理空白昵称：空串当成清除昵称
+        String trimmed = nickname != null ? nickname.trim() : null;
+        if (trimmed != null && trimmed.isEmpty()) {
+            trimmed = null;
+        }
+
+        member.setNickname(trimmed);
+        member.setUpdateTime(LocalDateTime.now());
+        groupMemberMapper.updateById(member);
+
+        log.info("更新群内个人昵称成功，userId: {}, groupId: {}, nickname: {}", userId, groupId, trimmed);
+    }
+    
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void transferOwner(Long groupId, Long newOwnerId) {
+        Long currentUserId = UserContext.getCurrentUserId();
+        log.info("转让群主，operatorId: {}, groupId: {}, newOwnerId: {}", currentUserId, groupId, newOwnerId);
+        
+        if (currentUserId == null) {
+            throw new BusinessException(ResultCode.UNAUTHORIZED, "用户未登录");
+        }
+        
+        // 1. 校验群组存在且未解散
+        Group group = groupMapper.selectById(groupId);
+        if (group == null || group.getStatus() != 1) {
+            throw new BusinessException(ResultCode.NOT_FOUND, "群组不存在或已解散");
+        }
+        
+        // 2. 校验当前用户是群主
+        if (!group.getOwnerId().equals(currentUserId)) {
+            throw new BusinessException(ResultCode.FORBIDDEN, "只有群主可以转让群主");
+        }
+        
+        // 3. 校验新群主是该群有效成员
+        GroupMember newOwnerMember = groupMemberMapper.selectByGroupIdAndUserId(groupId, newOwnerId);
+        if (newOwnerMember == null || newOwnerMember.getStatus() != 1) {
+            throw new BusinessException(ResultCode.BAD_REQUEST, "目标用户不是该群成员");
+        }
+        
+        // 4. 不能转让给自己
+        if (newOwnerId.equals(currentUserId)) {
+            throw new BusinessException(ResultCode.BAD_REQUEST, "不能转让给自己");
+        }
+        
+        // 5. 更新群组表的 owner_id
+        group.setOwnerId(newOwnerId);
+        group.setUpdateTime(LocalDateTime.now());
+        groupMapper.updateById(group);
+        
+        // 6. 更新原群主的角色为普通成员
+        GroupMember oldOwnerMember = groupMemberMapper.selectByGroupIdAndUserId(groupId, currentUserId);
+        if (oldOwnerMember != null) {
+            groupMemberMapper.updateRole(oldOwnerMember.getId(), 0); // 0=普通成员
+        }
+        
+        // 7. 更新新群主的角色为群主
+        groupMemberMapper.updateRole(newOwnerMember.getId(), 2); // 2=群主
+        
+        // 8. 获取用户信息用于推送通知
+        User oldOwner = userMapper.selectById(currentUserId);
+        String oldOwnerName = oldOwner != null ? oldOwner.getNickname() : "未知用户";
+        
+        // 9. 只通知新群主
+        webSocketUtil.pushGroupOwnerTransferNotification(
+            newOwnerId,
+            currentUserId,
+            oldOwnerName,
+            groupId,
+            group.getGroupName(),
+            true
+        );
+        
+        log.info("转让群主成功，groupId: {}, oldOwnerId: {}, newOwnerId: {}", groupId, currentUserId, newOwnerId);
+    }
+    
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public void setGroupAdmin(Long groupId, Long userId, boolean isAdmin) {
         // 1. 获取当前用户ID（操作者）
         Long currentUserId = UserContext.getCurrentUserId();
@@ -686,6 +796,22 @@ public class GroupServiceImpl implements GroupService {
             group.getGroupName(),
             isAdmin
         );
+        
+        // 8. 通知其他管理员和群主
+        List<GroupMember> admins = groupMemberMapper.selectAdminsByGroupId(groupId);
+        for (GroupMember admin : admins) {
+            // 排除被变更的人（已通知）和操作者（群主自己）
+            if (!admin.getUserId().equals(userId) && !admin.getUserId().equals(currentUserId)) {
+                webSocketUtil.pushGroupAdminNotification(
+                    admin.getUserId(),
+                    currentUserId,
+                    targetUserName,
+                    groupId,
+                    group.getGroupName(),
+                    isAdmin
+                );
+            }
+        }
         
         log.info("设置群组管理员成功，groupId: {}, userId: {}, newRole: {}", groupId, userId, newRole);
     }
@@ -984,8 +1110,24 @@ public class GroupServiceImpl implements GroupService {
             operatorId,
             removedUserName,
             groupId,
-            group.getGroupName()
+            group.getGroupName(),
+            true  // 被移除的人
         );
+        
+        // 9. 通知群主和其他管理员
+        List<GroupMember> admins = groupMemberMapper.selectAdminsByGroupId(groupId);
+        for (GroupMember admin : admins) {
+            if (!admin.getUserId().equals(operatorId)) {
+                webSocketUtil.pushGroupRemoveNotification(
+                    admin.getUserId(),
+                    operatorId,
+                    removedUserName,
+                    groupId,
+                    group.getGroupName(),
+                    false  // 管理员/群主
+                );
+            }
+        }
         
         log.info("移除群成员成功，operatorId: {}, userId: {}, groupId: {}", operatorId, userId, groupId);
     }
@@ -1013,7 +1155,11 @@ public class GroupServiceImpl implements GroupService {
             throw new BusinessException(ResultCode.FORBIDDEN, "只有群主可以修改群组信息");
         }
         
-        // 4. 更新群组信息
+        // 4. 记录公告是否变更（用于通知）
+        String oldNotice = group.getNotice();
+        boolean noticeChanged = false;
+        
+        // 5. 更新群组信息
         if (groupDTO.getGroupName() != null && !groupDTO.getGroupName().trim().isEmpty()) {
             group.setGroupName(groupDTO.getGroupName());
         }
@@ -1023,6 +1169,9 @@ public class GroupServiceImpl implements GroupService {
         }
         
         if (groupDTO.getNotice() != null) {
+            if (!groupDTO.getNotice().equals(oldNotice)) {
+                noticeChanged = true;
+            }
             group.setNotice(groupDTO.getNotice());
         }
         
@@ -1041,7 +1190,27 @@ public class GroupServiceImpl implements GroupService {
         
         log.info("群组信息修改成功，groupId: {}", groupId);
         
-        // 5. 返回更新后的群组信息
+        // 6. 只有群公告更新时才通知所有成员
+        if (noticeChanged) {
+            User operatorUser = userMapper.selectById(currentUserId);
+            String operatorName = operatorUser != null ? operatorUser.getNickname() : "群主";
+            List<GroupMember> members = groupMemberMapper.selectByGroupId(groupId);
+            
+            for (GroupMember member : members) {
+                if (!member.getUserId().equals(currentUserId)) {
+                    webSocketUtil.pushGroupInfoUpdateNotification(
+                        member.getUserId(),
+                        currentUserId,
+                        operatorName,
+                        groupId,
+                        group.getGroupName(),
+                        "notice"
+                    );
+                }
+            }
+        }
+        
+        // 7. 返回更新后的群组信息
         return getGroupById(groupId);
     }
 }

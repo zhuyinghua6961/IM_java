@@ -141,6 +141,45 @@ public class MessageServiceImpl implements MessageService {
     }
     
     @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long saveFailedMessage(Long fromUserId, MessageDTO messageDTO, Integer failureStatus) {
+        log.info("保存失败消息，fromUserId: {}, failureStatus: {}", fromUserId, failureStatus);
+        
+        // 1. 确定接收方ID
+        Long toId;
+        if (messageDTO.getChatType() == 1) {
+            toId = messageDTO.getToUserId();
+        } else {
+            toId = messageDTO.getGroupId();
+        }
+        
+        // 2. 创建消息记录（设置失败状态）
+        Message message = new Message();
+        message.setId(idGenerator.nextId());
+        message.setFromUserId(fromUserId);
+        message.setToId(toId);
+        message.setChatType(messageDTO.getChatType());
+        message.setMsgType(messageDTO.getMsgType());
+        message.setContent(messageDTO.getContent());
+        message.setUrl(messageDTO.getUrl());
+        message.setStatus(failureStatus); // -1 被拉黑，-2 其他失败
+        message.setSendTime(LocalDateTime.now());
+        message.setPersistStatus(RedisKeyConstant.PERSIST_STATUS_PENDING);
+        
+        // 3. 缓存到Redis并发送到Kafka（异步持久化）
+        messageCacheService.cacheAndSendToKafka(message);
+        log.debug("失败消息已缓存，将异步持久化: messageId={}", message.getId());
+        
+        // 4. 只更新发送方的会话（不更新接收方，因为消息未送达）
+        conversationService.updateOrCreateConversation(
+            fromUserId, toId, messageDTO.getChatType(), message.getId(), false
+        );
+        
+        log.info("失败消息保存成功，messageId: {}, status: {}", message.getId(), failureStatus);
+        return message.getId();
+    }
+    
+    @Override
     public Map<String, Object> getHistoryMessages(Long userId, Long targetId, Integer chatType, Integer page, Integer size) {
         log.debug("获取历史消息，userId: {}, targetId: {}, chatType: {}, page: {}, size: {}", 
                 userId, targetId, chatType, page, size);

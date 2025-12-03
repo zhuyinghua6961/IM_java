@@ -31,6 +31,10 @@
           <el-icon><UserFilled /></el-icon>
           <span>群组</span>
         </el-menu-item>
+        <el-menu-item index="blacklist">
+          <el-icon><Close /></el-icon>
+          <span>黑名单</span>
+        </el-menu-item>
       </el-menu>
     </div>
     
@@ -196,6 +200,10 @@
                     <el-icon><Delete /></el-icon>
                     <span>删除好友</span>
                   </el-dropdown-item>
+                  <el-dropdown-item command="block">
+                    <el-icon><Close /></el-icon>
+                    <span>拉黑</span>
+                  </el-dropdown-item>
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
@@ -203,7 +211,7 @@
         </div>
         
         <!-- 群组列表 -->
-        <div v-else>
+        <div v-else-if="activeTab === 'groups'">
           <div v-for="group in groups" :key="group.groupId" class="contact-item">
             <el-avatar :size="40" :src="group.avatar">
               {{ group.groupName?.charAt(0) }}
@@ -237,6 +245,27 @@
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
+          </div>
+        </div>
+        
+        <!-- 黑名单列表 -->
+        <div v-else-if="activeTab === 'blacklist'">
+          <div v-if="blacklist.length === 0" class="empty-requests">
+            <el-empty description="暂无黑名单用户" />
+          </div>
+          <div v-else>
+            <div v-for="item in blacklist" :key="item.id" class="contact-item">
+              <el-avatar :size="40" :src="item.avatar">
+                {{ (item.nickname || item.username)?.charAt(0) }}
+              </el-avatar>
+              <div class="blacklist-info">
+                <span class="contact-name">{{ item.nickname || item.username }}</span>
+                <span class="blacklist-time">{{ formatTime(item.createTime) }} 拉黑</span>
+              </div>
+              <el-button type="primary" size="small" @click="handleUnblock(item)">
+                解除拉黑
+              </el-button>
+            </div>
           </div>
         </div>
       </el-scrollbar>
@@ -302,6 +331,34 @@
         >
           发送申请
         </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 编辑我的群昵称对话框 -->
+    <el-dialog v-model="showEditGroupNicknameDialog" title="设置我的群昵称" width="420px">
+      <el-form :model="editGroupNicknameForm" label-width="90px">
+        <el-form-item label="群组">
+          <span>{{ currentGroup?.groupName }}</span>
+        </el-form-item>
+        <el-form-item label="用户昵称">
+          <span>{{ editGroupNicknameForm.userNickname || editGroupNicknameForm.username }}</span>
+        </el-form-item>
+        <el-form-item label="当前群昵称">
+          <span v-if="editGroupNicknameForm.currentNickname">{{ editGroupNicknameForm.currentNickname }}</span>
+          <span v-else style="color: #909399">未设置（使用用户昵称）</span>
+        </el-form-item>
+        <el-form-item label="群昵称">
+          <el-input
+            v-model="editGroupNicknameForm.nickname"
+            maxlength="20"
+            show-word-limit
+            placeholder="输入在本群显示的昵称，留空表示使用默认昵称"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showEditGroupNicknameDialog = false">取消</el-button>
+        <el-button type="primary" :loading="editGroupNicknameLoading" @click="saveGroupNickname">保存</el-button>
       </template>
     </el-dialog>
     
@@ -381,7 +438,21 @@
               <el-input v-model="groupEditForm.groupName" placeholder="请输入群名称" />
             </el-form-item>
             <el-form-item label="群头像">
-              <el-input v-model="groupEditForm.avatar" placeholder="请输入头像链接" />
+              <div class="group-avatar-upload">
+                <el-avatar :size="64" :src="groupEditForm.avatar">
+                  {{ groupEditForm.groupName?.charAt(0) }}
+                </el-avatar>
+                <el-button type="primary" link @click="handleGroupAvatarClick">
+                  {{ groupEditForm.avatar ? '更换头像' : '上传头像' }}
+                </el-button>
+                <input
+                  ref="groupAvatarInputRef"
+                  type="file"
+                  accept="image/*"
+                  style="display: none"
+                  @change="handleGroupAvatarChange"
+                />
+              </div>
             </el-form-item>
             <el-form-item label="群公告">
               <el-input 
@@ -467,11 +538,14 @@
               class="member-item"
             >
               <el-avatar :size="40" :src="member.avatar">
-                {{ member.nickname?.charAt(0) }}
+                {{ (member.groupNickname || member.nickname)?.charAt(0) }}
               </el-avatar>
               
               <div class="member-info">
-                <div class="member-name">{{ member.nickname }}</div>
+                <div class="member-name">
+                  {{ member.groupNickname || member.nickname }}
+                  <span v-if="member.groupNickname" class="original-nickname">({{ member.nickname }})</span>
+                </div>
                 <div class="member-join-time">{{ formatTime(member.joinTime) }} 加入</div>
               </div>
               
@@ -500,6 +574,13 @@
                   取消管理员
                 </el-button>
                 <el-button
+                  type="success"
+                  size="small"
+                  @click="openTransferOwnerDialog(member)"
+                >
+                  转让群主
+                </el-button>
+                <el-button
                   type="danger"
                   size="small"
                   @click="removeMember(currentGroup.groupId, member.userId, member.nickname)"
@@ -518,6 +599,14 @@
                 >
                   移除
                 </el-button>
+              </div>
+              <div class="member-actions" v-if="member.userId === getCurrentUserId()">
+                <el-button
+                  type="primary"
+                  link
+                  size="small"
+                  @click="openEditMyGroupNickname(member)"
+                >设置我的群昵称</el-button>
               </div>
             </div>
           </div>
@@ -575,6 +664,35 @@
       </template>
     </el-dialog>
 
+    <!-- 转让群主对话框 -->
+    <el-dialog v-model="showTransferOwnerDialog" title="转让群主" width="420px">
+      <el-alert type="warning" :closable="false" show-icon style="margin-bottom: 15px">
+        转让群主后，您将变为普通成员，新群主将拥有所有管理权限。
+      </el-alert>
+      <div v-if="transferOwnerTarget" class="transfer-owner-info">
+        <div class="target-member">
+          <el-avatar :size="48" :src="transferOwnerTarget.avatar">
+            {{ transferOwnerTarget.nickname?.charAt(0) }}
+          </el-avatar>
+          <div class="target-info">
+            <div class="target-name">{{ transferOwnerTarget.nickname }}</div>
+            <div class="target-role">
+              <el-tag :type="getRoleType(transferOwnerTarget.role)" size="small">
+                {{ getRoleText(transferOwnerTarget.role) }}
+              </el-tag>
+            </div>
+          </div>
+        </div>
+        <p class="transfer-confirm-text">确定要将群主转让给 <strong>{{ transferOwnerTarget.nickname }}</strong> 吗？</p>
+      </div>
+      <template #footer>
+        <el-button @click="showTransferOwnerDialog = false">取消</el-button>
+        <el-button type="primary" :loading="transferOwnerLoading" @click="confirmTransferOwner">
+          确认转让
+        </el-button>
+      </template>
+    </el-dialog>
+
     <!-- 好友资料对话框 -->
     <el-dialog v-model="showFriendInfoDialog" title="好友资料" width="420px">
       <div v-if="currentFriend" class="friend-info">
@@ -627,19 +745,17 @@
       </el-form>
       <template #footer>
         <el-button @click="showRemarkDialog = false">取消</el-button>
-        <el-button type="primary" :loading="remarkLoading" @click="saveRemark">
-          保存
-        </el-button>
+        <el-button type="primary" :loading="remarkLoading" @click="saveRemark">保存</el-button>
       </template>
     </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { MoreFilled, ChatDotRound, Delete, InfoFilled, Close, Message, Plus, User, Bell, UserFilled, Edit } from '@element-plus/icons-vue'
-import { getFriendList, addFriend, handleFriendRequest, updateFriendRemark } from '@/api/friend'
+import { getFriendList, addFriend, handleFriendRequest, updateFriendRemark, blockUser, unblockUser, getBlacklist } from '@/api/friend'
 import { searchUser } from '@/api/user'
 import { 
   getGroupList, 
@@ -653,7 +769,9 @@ import {
   setGroupAdmin as setGroupAdminApi,
   inviteToGroup,
   removeMember as removeMemberApi,
-  updateGroup
+  updateGroup,
+  updateMyGroupNickname,
+  transferOwner
 } from '@/api/group'
 import request from '@/utils/request'
 import { useRouter } from 'vue-router'
@@ -682,6 +800,7 @@ const groups = ref([])
 const friendRequests = ref([])
 const groupInvitations = ref([])
 const groupNotifications = ref([])
+const blacklist = ref([])
 const currentGroup = ref(null)
 const currentFriend = ref(null)
 const groupMembers = ref([])
@@ -692,6 +811,9 @@ const remarkForm = ref({
   remark: ''
 })
 const remarkLoading = ref(false)
+
+// 群头像上传
+const groupAvatarInputRef = ref(null)
 
 const searchInput = ref('')
 const searchResults = ref([])
@@ -715,6 +837,22 @@ const groupEditForm = ref({
   notice: '',
   maxMembers: 500
 })
+
+const showEditGroupNicknameDialog = ref(false)
+const editGroupNicknameForm = ref({
+  groupId: null,
+  userId: null,
+  username: '',
+  userNickname: '',
+  currentNickname: '',
+  nickname: ''
+})
+const editGroupNicknameLoading = ref(false)
+
+// 转让群主相关
+const showTransferOwnerDialog = ref(false)
+const transferOwnerTarget = ref(null)
+const transferOwnerLoading = ref(false)
 
 // 计算未读申请数量
 const unreadRequestCount = computed(() => {
@@ -754,6 +892,42 @@ const handleTabSelect = (index) => {
     markGroupNotificationsAsRead()
   } else if (index === 'groups') {
     loadGroupList()
+  } else if (index === 'blacklist') {
+    loadBlacklist()
+  }
+}
+
+const openEditMyGroupNickname = (row) => {
+  editGroupNicknameForm.value.groupId = currentGroup.value?.groupId
+  editGroupNicknameForm.value.userId = row.userId
+  editGroupNicknameForm.value.username = row.username
+  editGroupNicknameForm.value.userNickname = row.nickname  // 用户昵称
+  editGroupNicknameForm.value.currentNickname = row.groupNickname  // 群昵称
+  editGroupNicknameForm.value.nickname = row.groupNickname || ''
+  showEditGroupNicknameDialog.value = true
+}
+
+const saveGroupNickname = async () => {
+  if (!editGroupNicknameForm.value.groupId) {
+    ElMessage.error('群组信息不存在')
+    return
+  }
+  try {
+    editGroupNicknameLoading.value = true
+    const trimmed = editGroupNicknameForm.value.nickname && editGroupNicknameForm.value.nickname.trim()
+    await updateMyGroupNickname(editGroupNicknameForm.value.groupId, trimmed || null)
+    ElMessage.success('群昵称已更新')
+    // 同步到成员列表
+    const member = groupMembers.value.find(m => m.userId === getCurrentUserId())
+    if (member) {
+      member.groupNickname = trimmed || null
+    }
+    showEditGroupNicknameDialog.value = false
+  } catch (error) {
+    console.error('更新群昵称失败:', error)
+    ElMessage.error(error.response?.data?.message || '更新群昵称失败')
+  } finally {
+    editGroupNicknameLoading.value = false
   }
 }
 
@@ -952,6 +1126,43 @@ const markGroupNotificationsAsRead = () => {
   localStorage.setItem('groupNotifications', JSON.stringify(groupNotifications.value))
 }
 
+// 加载黑名单列表
+const loadBlacklist = async () => {
+  try {
+    const res = await getBlacklist()
+    blacklist.value = res.data || []
+  } catch (error) {
+    console.error('加载黑名单失败:', error)
+    blacklist.value = []
+  }
+}
+
+// 解除拉黑
+const handleUnblock = async (item) => {
+  try {
+    await ElMessageBox.confirm(
+      `确定要解除对 ${item.nickname || item.username} 的拉黑吗？`,
+      '解除拉黑',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'info'
+      }
+    )
+    
+    await unblockUser(item.blockedUserId)
+    ElMessage.success('已解除拉黑')
+    
+    // 重新加载黑名单列表
+    await loadBlacklist()
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('解除拉黑失败:', error)
+      ElMessage.error('解除拉黑失败')
+    }
+  }
+}
+
 // 添加群消息通知
 const addGroupNotification = (notification) => {
   groupNotifications.value.unshift({
@@ -980,7 +1191,10 @@ const getNotificationTypeTag = (type) => {
     'GROUP_MEMBER_REMOVED': 'danger',
     'GROUP_MEMBER_QUIT': 'info',
     'GROUP_DIRECT_JOIN': 'success',
-    'GROUP_DISSOLVED': 'danger'
+    'GROUP_DISSOLVED': 'danger',
+    'GROUP_OWNER_TRANSFER': 'warning',
+    'GROUP_INFO_UPDATE': 'warning',
+    'GROUP_NEW_MEMBER': 'success'
   }
   return tagMap[type] || 'info'
 }
@@ -992,7 +1206,10 @@ const getNotificationTypeText = (type) => {
     'GROUP_MEMBER_REMOVED': '成员被移除',
     'GROUP_MEMBER_QUIT': '成员退出',
     'GROUP_DIRECT_JOIN': '直接加入',
-    'GROUP_DISSOLVED': '群组解散'
+    'GROUP_DISSOLVED': '群组解散',
+    'GROUP_OWNER_TRANSFER': '群主转让',
+    'GROUP_INFO_UPDATE': '群公告更新',
+    'GROUP_NEW_MEMBER': '新成员加入'
   }
   return textMap[type] || '系统通知'
 }
@@ -1093,6 +1310,32 @@ const handleFriendAction = async (command, friend) => {
         ElMessage.error('删除好友失败')
       }
     }
+  } else if (command === 'block') {
+    // 拉黑好友
+    try {
+      await ElMessageBox.confirm(
+        `确定要拉黑 ${friend.nickname} 吗？拉黑后将无法收到对方的消息。`,
+        '拉黑用户',
+        {
+          confirmButtonText: '确定拉黑',
+          cancelButtonText: '取消',
+          type: 'warning',
+          confirmButtonClass: 'el-button--danger'
+        }
+      )
+      
+      await blockUser(friend.userId)
+      ElMessage.success('已拉黑该用户')
+      
+      // 重新加载好友列表
+      const res = await getFriendList()
+      friends.value = res.data
+    } catch (error) {
+      if (error !== 'cancel') {
+        console.error('拉黑用户失败:', error)
+        ElMessage.error('拉黑用户失败')
+      }
+    }
   }
 }
 
@@ -1175,6 +1418,84 @@ const cancelEditGroupInfo = () => {
   editingGroupInfo.value = false
 }
 
+// 点击上传群头像
+const handleGroupAvatarClick = () => {
+  groupAvatarInputRef.value?.click()
+}
+
+// 处理群头像上传
+const handleGroupAvatarChange = async (event) => {
+  const file = event.target.files && event.target.files[0]
+  event.target.value = ''
+  if (!file) return
+  
+  if (!file.type.startsWith('image/')) {
+    ElMessage.warning('请选择图片文件')
+    return
+  }
+  
+  try {
+    const MAX_SIZE = 2 * 1024 * 1024 // 2MB
+    if (file.size > MAX_SIZE) {
+      ElMessage.warning('头像图片过大，请选择 2MB 以下的图片')
+      return
+    }
+
+    // 使用 canvas 进行中心裁剪并缩放为正方形
+    const dataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = (e) => resolve(e.target.result)
+      reader.onerror = reject
+      reader.readAsDataURL(file)
+    })
+
+    const img = await new Promise((resolve, reject) => {
+      const image = new Image()
+      image.onload = () => resolve(image)
+      image.onerror = reject
+      image.src = dataUrl
+    })
+
+    const minSide = Math.min(img.width, img.height)
+    const sx = (img.width - minSide) / 2
+    const sy = (img.height - minSide) / 2
+    const TARGET_SIZE = 256
+
+    const canvas = document.createElement('canvas')
+    canvas.width = TARGET_SIZE
+    canvas.height = TARGET_SIZE
+    const ctx = canvas.getContext('2d')
+    ctx.drawImage(img, sx, sy, minSide, minSide, 0, 0, TARGET_SIZE, TARGET_SIZE)
+
+    const blob = await new Promise((resolve, reject) => {
+      canvas.toBlob((b) => {
+        if (!b) reject(new Error('裁剪头像失败'))
+        else resolve(b)
+      }, 'image/jpeg', 0.9)
+    })
+
+    if (blob.size > MAX_SIZE) {
+      ElMessage.warning('裁剪后的头像仍然过大，请选择更小的图片')
+      return
+    }
+
+    const uploadFile = new File([blob], 'group_avatar.jpg', { type: 'image/jpeg' })
+    const formData = new FormData()
+    formData.append('file', uploadFile)
+
+    const res = await request.post('/files/upload/image', formData)
+    const { url } = res.data || {}
+    if (!url) {
+      throw new Error('上传头像失败：未返回URL')
+    }
+    groupEditForm.value.avatar = url
+    ElMessage.success('群头像上传成功')
+  } catch (error) {
+    console.error('上传群头像失败:', error)
+    ElMessage.error('上传群头像失败')
+  }
+}
+
 // 保存群信息
 const saveGroupInfo = async () => {
   if (!groupEditForm.value.groupName || !groupEditForm.value.groupName.trim()) {
@@ -1236,6 +1557,40 @@ const setGroupAdmin = async (groupId, userId, isAdmin) => {
   } catch (error) {
     console.error('设置管理员失败:', error)
     ElMessage.error(error.response?.data?.message || '操作失败')
+  }
+}
+
+// 打开转让群主对话框
+const openTransferOwnerDialog = (member) => {
+  transferOwnerTarget.value = member
+  showTransferOwnerDialog.value = true
+}
+
+// 确认转让群主
+const confirmTransferOwner = async () => {
+  if (!currentGroup.value || !transferOwnerTarget.value) {
+    ElMessage.error('群组或目标成员信息不存在')
+    return
+  }
+  
+  try {
+    transferOwnerLoading.value = true
+    
+    await transferOwner(currentGroup.value.groupId, transferOwnerTarget.value.userId)
+    
+    ElMessage.success(`已将群主转让给 ${transferOwnerTarget.value.nickname}`)
+    
+    // 关闭对话框
+    showTransferOwnerDialog.value = false
+    showGroupMembersDialog.value = false
+    
+    // 刷新群组列表
+    await loadGroupList()
+  } catch (error) {
+    console.error('转让群主失败:', error)
+    ElMessage.error(error.response?.data?.message || '转让群主失败')
+  } finally {
+    transferOwnerLoading.value = false
   }
 }
 
@@ -1452,21 +1807,32 @@ onMounted(async () => {
   loadGroupList()
   
   // 监听WebSocket群组通知
-  window.addEventListener('groupNotification', (event) => {
-    const notification = event.detail
-    // 过滤出需要显示在群消息通知中的类型
-    const displayTypes = [
-      'GROUP_ADMIN_CHANGE',
-      'GROUP_MEMBER_REMOVED', 
-      'GROUP_MEMBER_QUIT',
-      'GROUP_DIRECT_JOIN',
-      'GROUP_DISSOLVED'
-    ]
-    
-    if (displayTypes.includes(notification.type)) {
-      addGroupNotification(notification)
-    }
-  })
+  window.addEventListener('groupNotification', handleGroupNotificationEvent)
+})
+
+// 群组通知事件处理函数
+const handleGroupNotificationEvent = (event) => {
+  const notification = event.detail
+  // 过滤出需要显示在群消息通知中的类型
+  const displayTypes = [
+    'GROUP_ADMIN_CHANGE',
+    'GROUP_MEMBER_REMOVED', 
+    'GROUP_MEMBER_QUIT',
+    'GROUP_DIRECT_JOIN',
+    'GROUP_DISSOLVED',
+    'GROUP_OWNER_TRANSFER',
+    'GROUP_INFO_UPDATE',
+    'GROUP_NEW_MEMBER'
+  ]
+  
+  if (displayTypes.includes(notification.type)) {
+    addGroupNotification(notification)
+  }
+}
+
+// 组件卸载时移除事件监听
+onUnmounted(() => {
+  window.removeEventListener('groupNotification', handleGroupNotificationEvent)
 })
 </script>
 
@@ -1766,6 +2132,13 @@ onMounted(async () => {
   margin-bottom: 4px;
 }
 
+.member-name .original-nickname {
+  font-size: 12px;
+  font-weight: normal;
+  color: #909399;
+  margin-left: 4px;
+}
+
 .member-join-time {
   font-size: 12px;
   color: #909399;
@@ -1822,5 +2195,66 @@ onMounted(async () => {
 .no-friends {
   padding: 30px 0;
   text-align: center;
+}
+
+/* 转让群主对话框样式 */
+.transfer-owner-info {
+  padding: 15px 0;
+}
+
+.target-member {
+  display: flex;
+  align-items: center;
+  padding: 15px;
+  background: #f5f7fa;
+  border-radius: 8px;
+  margin-bottom: 15px;
+}
+
+.target-info {
+  margin-left: 12px;
+}
+
+.target-name {
+  font-size: 16px;
+  font-weight: 500;
+  color: #303133;
+  margin-bottom: 4px;
+}
+
+.transfer-confirm-text {
+  text-align: center;
+  font-size: 14px;
+  color: #606266;
+  margin: 15px 0 0;
+}
+
+.transfer-confirm-text strong {
+  color: #409eff;
+}
+
+/* 群头像上传样式 */
+.group-avatar-upload {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.group-avatar-upload .el-avatar {
+  border: 1px solid #e0e0e0;
+}
+
+/* 黑名单样式 */
+.blacklist-info {
+  flex: 1;
+  margin-left: 12px;
+  display: flex;
+  flex-direction: column;
+}
+
+.blacklist-time {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 2px;
 }
 </style>

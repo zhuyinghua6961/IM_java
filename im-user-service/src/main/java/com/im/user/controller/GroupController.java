@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -157,6 +158,28 @@ public class GroupController {
                                      @RequestBody Map<String, Object> request) {
         Long userId = Long.valueOf(request.get("userId").toString());
         groupService.removeMember(groupId, userId);
+        return Result.success();
+    }
+
+    /**
+     * 设置当前用户在群内的个人昵称
+     */
+    @PutMapping("/{groupId}/member/nickname")
+    public Result<Void> updateMyNickname(@PathVariable("groupId") Long groupId,
+                                         @RequestBody Map<String, Object> request) {
+        String nickname = (String) request.get("nickname");
+        groupService.updateMyGroupNickname(groupId, nickname);
+        return Result.success();
+    }
+
+    /**
+     * 转让群主（群主专用）
+     */
+    @PostMapping("/{groupId}/transfer")
+    public Result<Void> transferOwner(@PathVariable("groupId") Long groupId,
+                                      @RequestBody Map<String, Object> request) {
+        Long newOwnerId = Long.valueOf(request.get("newOwnerId").toString());
+        groupService.transferOwner(groupId, newOwnerId);
         return Result.success();
     }
 }
