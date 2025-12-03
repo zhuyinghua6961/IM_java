@@ -4,7 +4,10 @@
     <div class="conversation-list" :style="{ width: conversationListWidth + 'px' }">
       <div class="list-header">
         <h3>消息</h3>
-        <el-badge :value="totalUnread" :hidden="totalUnread === 0" class="badge" />
+        <div class="header-actions">
+          <el-icon class="search-icon" @click="showSearchDialog = true"><Search /></el-icon>
+          <el-badge :value="totalUnread" :hidden="totalUnread === 0" class="badge" />
+        </div>
       </div>
       
       <el-scrollbar class="conv-scrollbar">
@@ -138,7 +141,15 @@
                   <span class="message-name">{{ msg.nickname }}</span>
                   <span class="message-time">{{ formatTime(msg.sendTime) }}</span>
                 </div>
-                <div class="message-bubble" :class="{ 'recalled': isRecalledMessage(msg), 'sending': isSendingMessage(msg), 'failed': isFailedMessage(msg) }">
+                <div 
+                  :id="'msg-' + msg.id"
+                  class="message-bubble" 
+                  :class="{ 
+                    'recalled': isRecalledMessage(msg), 
+                    'sending': isSendingMessage(msg), 
+                    'failed': isFailedMessage(msg),
+                    'highlight-msg': highlightMessageId === msg.id
+                  }">
                   <template v-if="isRecalledMessage(msg)">
                     <span class="recalled-text">{{ getRecalledText(msg) }}</span>
                   </template>
@@ -370,13 +381,60 @@
       />
     </template>
     </div>
+    
+    <!-- 消息搜索对话框 -->
+    <el-dialog v-model="showSearchDialog" title="搜索消息" width="600px" class="search-dialog">
+      <div class="search-header">
+        <el-input
+          v-model="searchKeyword"
+          placeholder="输入关键词搜索消息"
+          :prefix-icon="Search"
+          clearable
+          @keyup.enter="handleSearchMessages"
+        />
+        <el-button type="primary" @click="handleSearchMessages" :loading="searchLoading">搜索</el-button>
+      </div>
+      
+      <div class="search-results">
+        <div v-if="searchResults.length === 0 && searchedOnce" class="empty-search">
+          <el-empty description="未找到相关消息" />
+        </div>
+        <div v-else class="result-list">
+          <div
+            v-for="item in searchResults"
+            :key="item.id"
+            class="result-item"
+            @click="goToSearchResult(item)"
+          >
+            <div class="result-header">
+              <span class="result-conv-name">{{ getSearchResultConvName(item) }}</span>
+              <span class="result-time">{{ formatSearchTime(item.sendTime) }}</span>
+            </div>
+            <div class="result-content">
+              <span v-html="highlightKeyword(item.content, searchKeyword)"></span>
+            </div>
+          </div>
+        </div>
+        
+        <!-- 分页 -->
+        <div v-if="searchTotal > searchSize" class="search-pagination">
+          <el-pagination
+            v-model:current-page="searchPage"
+            :page-size="searchSize"
+            :total="searchTotal"
+            layout="prev, pager, next"
+            @current-change="handleSearchMessages"
+          />
+        </div>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { deleteMessage as deleteMessageApi } from '@/api/message'
+import { deleteMessage as deleteMessageApi, searchMessages, getMessageContext } from '@/api/message'
 import { 
   Search, 
   Plus, 
@@ -407,6 +465,17 @@ const userStore = useUserStore()
 const selectedConv = ref(null)
 const inputMessage = ref('')
 const messages = ref([])
+
+// 消息搜索相关
+const showSearchDialog = ref(false)
+const searchKeyword = ref('')
+const searchResults = ref([])
+const searchLoading = ref(false)
+const searchedOnce = ref(false)
+const searchPage = ref(1)
+const searchSize = ref(20)
+const searchTotal = ref(0)
+const highlightMessageId = ref(null) // 高亮显示的消息ID
 const messageScrollbar = ref(null)
 const hoveredMessageId = ref(null) // 当前悬停的消息ID
 const inputRef = ref(null)
@@ -2034,6 +2103,153 @@ const scrollToBottom = () => {
   })
 }
 
+// 搜索消息
+const handleSearchMessages = async () => {
+  if (!searchKeyword.value.trim()) {
+    ElMessage.warning('请输入搜索关键词')
+    return
+  }
+  
+  searchLoading.value = true
+  try {
+    const res = await searchMessages(searchKeyword.value.trim(), null, null, searchPage.value, searchSize.value)
+    searchResults.value = res.data.list || []
+    searchTotal.value = res.data.total || 0
+    searchedOnce.value = true
+  } catch (error) {
+    console.error('搜索失败:', error)
+    ElMessage.error('搜索失败')
+  } finally {
+    searchLoading.value = false
+  }
+}
+
+// 高亮搜索关键词
+const highlightKeyword = (content, keyword) => {
+  if (!content || !keyword) return content
+  const regex = new RegExp(`(${keyword})`, 'gi')
+  return content.replace(regex, '<span class="highlight">$1</span>')
+}
+
+// 格式化搜索结果时间
+const formatSearchTime = (time) => {
+  if (!time) return ''
+  const date = new Date(time)
+  const now = new Date()
+  const diff = now - date
+  
+  if (diff < 24 * 60 * 60 * 1000) {
+    // 24小时内
+    return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+  } else if (diff < 7 * 24 * 60 * 60 * 1000) {
+    // 一周内
+    const days = ['日', '一', '二', '三', '四', '五', '六']
+    return `周${days[date.getDay()]} ${date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`
+  } else {
+    // 更早
+    return date.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })
+  }
+}
+
+// 获取搜索结果的会话名称
+const getSearchResultConvName = (item) => {
+  const targetId = item.chatType === 1 
+    ? (item.fromUserId === currentUserId.value ? item.toId : item.fromUserId)
+    : item.toId
+  const conversationId = `${item.chatType}-${targetId}`
+  
+  // 从会话列表中查找
+  const conv = conversations.value.find(c => c.id === conversationId)
+  if (conv) {
+    return conv.targetName
+  }
+  
+  // 未找到时显示类型
+  return item.chatType === 1 ? '单聊' : '群聊'
+}
+
+// 跳转到搜索结果对应的会话并定位到消息
+const goToSearchResult = async (item) => {
+  showSearchDialog.value = false
+  
+  try {
+    // 调用后端API获取消息上下文（会自动加载到Redis缓存）
+    const res = await getMessageContext(item.id, 100)
+    const { list, targetId, chatType } = res.data
+    
+    const conversationId = `${chatType}-${targetId}`
+    
+    // 查找或创建会话
+    let conv = conversations.value.find(c => c.id === conversationId)
+    if (!conv) {
+      // 如果会话不存在，可能需要创建
+      ElMessage.info('该会话不在当前列表中')
+      return
+    }
+    
+    // 切换会话
+    selectedConv.value = conv
+    
+    // 处理消息列表，添加用户信息
+    const messageList = await Promise.all(
+      list.map(async (msg) => {
+        let nickname = ''
+        let avatar = ''
+        
+        if (msg.fromUserId === currentUserId.value) {
+          nickname = userStore.userInfo?.nickname || '我'
+          avatar = userStore.userInfo?.avatar || ''
+        } else if (chatType === 1) {
+          nickname = conv.targetName
+          avatar = conv.targetAvatar
+        } else {
+          const userInfo = await getUserInfo(msg.fromUserId, 1)
+          nickname = userInfo.name
+          avatar = userInfo.avatar
+        }
+        
+        return { ...msg, nickname, avatar }
+      })
+    )
+    
+    // 更新消息列表
+    messages.value = messageList
+    
+    // 清除@状态
+    if (conv.hasAtMe) {
+      chatStore.clearHasAtMe(conv.id)
+    }
+    
+    // 滚动到目标消息
+    setTimeout(() => {
+      scrollToMessage(item.id)
+    }, 300)
+  } catch (error) {
+    console.error('跳转失败:', error)
+    ElMessage.error('跳转失败')
+  }
+}
+
+// 滚动到指定消息并高亮
+const scrollToMessage = (messageId) => {
+  highlightMessageId.value = messageId
+  
+  nextTick(() => {
+    const element = document.getElementById(`msg-${messageId}`)
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      
+      // 3秒后取消高亮
+      setTimeout(() => {
+        highlightMessageId.value = null
+      }, 3000)
+    } else {
+      // 消息未找到，取消高亮
+      highlightMessageId.value = null
+    }
+  })
+}
+
 </script>
 
 <style scoped>
@@ -2574,5 +2790,108 @@ const scrollToBottom = () => {
 .text-count {
   font-size: 12px;
   color: #909399;
+}
+
+/* 搜索相关样式 */
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.search-icon {
+  font-size: 18px;
+  color: #606266;
+  cursor: pointer;
+  transition: color 0.3s;
+}
+
+.search-icon:hover {
+  color: #409eff;
+}
+
+.search-dialog .search-header {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.search-dialog .search-header .el-input {
+  flex: 1;
+}
+
+.search-results {
+  min-height: 200px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.result-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.result-item {
+  padding: 12px;
+  background: #f5f7fa;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.3s;
+}
+
+.result-item:hover {
+  background: #e6f0ff;
+}
+
+.result-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.result-conv-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: #303133;
+}
+
+.result-content {
+  font-size: 13px;
+  color: #606266;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.result-content :deep(.highlight) {
+  color: #409eff;
+  font-weight: bold;
+}
+
+.empty-search {
+  padding: 40px 0;
+}
+
+.search-pagination {
+  margin-top: 16px;
+  display: flex;
+  justify-content: center;
+}
+
+/* 高亮消息样式 */
+.message-bubble.highlight-msg {
+  animation: highlight-flash 0.5s ease-in-out 3;
+  box-shadow: 0 0 10px rgba(64, 158, 255, 0.6);
+}
+
+@keyframes highlight-flash {
+  0%, 100% {
+    background-color: inherit;
+  }
+  50% {
+    background-color: rgba(64, 158, 255, 0.3);
+  }
 }
 </style>

@@ -28,4 +28,11 @@
         ORDER BY join_time ASC
     </select>
     
+    <!-- 查询用户所在的所有群组 -->
+    <select id="selectByUserId" resultMap="BaseResultMap">
+        SELECT id, group_id, user_id, role, status, join_time, update_time
+        FROM group_member
+        WHERE user_id = #{userId} AND status = 1
+    </select>
+    
 </mapper>

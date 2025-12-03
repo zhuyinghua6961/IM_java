@@ -60,4 +60,24 @@ public interface MessageCacheService {
      * @return 会话ID
      */
     String generateConversationId(Long userId1, Long userId2);
+    
+    /**
+     * 检查会话缓存是否已加载
+     * @param conversationId 会话ID
+     * @return true-已加载
+     */
+    boolean isConversationCacheLoaded(String conversationId);
+    
+    /**
+     * 加载历史消息到Redis缓存
+     * @param conversationId 会话ID
+     * @param messages 消息列表
+     */
+    void loadHistoryMessagesToCache(String conversationId, List<Message> messages);
+    
+    /**
+     * 标记会话缓存已加载
+     * @param conversationId 会话ID
+     */
+    void markConversationCacheLoaded(String conversationId);
 }

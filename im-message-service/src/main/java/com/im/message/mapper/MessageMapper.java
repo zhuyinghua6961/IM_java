@@ -77,4 +77,37 @@ public interface MessageMapper {
      */
     int updateRecallStatus(@Param("messageId") Long messageId,
                           @Param("recallTime") Long recallTime);
+    
+    /**
+     * 搜索消息
+     */
+    List<Message> searchMessages(@Param("userId") Long userId,
+                                 @Param("keyword") String keyword,
+                                 @Param("groupIds") List<Long> groupIds,
+                                 @Param("chatType") Integer chatType,
+                                 @Param("targetId") Long targetId,
+                                 @Param("startTime") java.util.Date startTime,
+                                 @Param("endTime") java.util.Date endTime,
+                                 @Param("offset") Integer offset,
+                                 @Param("limit") Integer limit);
+    
+    /**
+     * 统计搜索结果数量
+     */
+    int countSearchMessages(@Param("userId") Long userId,
+                           @Param("keyword") String keyword,
+                           @Param("groupIds") List<Long> groupIds,
+                           @Param("chatType") Integer chatType,
+                           @Param("targetId") Long targetId,
+                           @Param("startTime") java.util.Date startTime,
+                           @Param("endTime") java.util.Date endTime);
+    
+    /**
+     * 查询消息上下文（指定消息前后的消息）
+     */
+    List<Message> selectMessageContext(@Param("userId") Long userId,
+                                       @Param("targetId") Long targetId,
+                                       @Param("chatType") Integer chatType,
+                                       @Param("messageId") Long messageId,
+                                       @Param("contextSize") Integer contextSize);
 }

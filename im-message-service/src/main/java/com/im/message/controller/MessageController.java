@@ -79,4 +79,38 @@ public class MessageController {
         messageService.deleteMessage(messageId, userId);
         return Result.success();
     }
+    
+    /**
+     * 搜索消息
+     */
+    @GetMapping("/search")
+    public Result<Map<String, Object>> searchMessages(
+            @RequestParam String keyword,
+            @RequestParam(required = false) Integer chatType,
+            @RequestParam(required = false) Long targetId,
+            @RequestParam(defaultValue = "1") Integer page,
+            @RequestParam(defaultValue = "20") Integer size) {
+        
+        Long userId = UserContext.getCurrentUserId();
+        log.info("搜索消息: userId={}, keyword={}, chatType={}, targetId={}, page={}, size={}", 
+                userId, keyword, chatType, targetId, page, size);
+        
+        Map<String, Object> result = messageService.searchMessages(userId, keyword, chatType, targetId, page, size);
+        return Result.success(result);
+    }
+    
+    /**
+     * 获取消息上下文（用于搜索跳转定位）
+     */
+    @GetMapping("/context")
+    public Result<Map<String, Object>> getMessageContext(
+            @RequestParam Long messageId,
+            @RequestParam(defaultValue = "50") Integer contextSize) {
+        
+        Long userId = UserContext.getCurrentUserId();
+        log.info("获取消息上下文: userId={}, messageId={}, contextSize={}", userId, messageId, contextSize);
+        
+        Map<String, Object> result = messageService.getMessageContext(userId, messageId, contextSize);
+        return Result.success(result);
+    }
 }

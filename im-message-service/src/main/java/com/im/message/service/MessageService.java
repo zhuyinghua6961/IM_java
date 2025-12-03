@@ -55,4 +55,25 @@ public interface MessageService {
      * @param userId 当前用户ID
      */
     void deleteMessage(Long messageId, Long userId);
+    
+    /**
+     * 搜索消息
+     * @param userId 当前用户ID
+     * @param keyword 搜索关键词
+     * @param chatType 聊天类型（可选）
+     * @param targetId 对方ID（可选）
+     * @param page 页码
+     * @param size 每页大小
+     * @return 搜索结果和总数
+     */
+    Map<String, Object> searchMessages(Long userId, String keyword, Integer chatType, Long targetId, Integer page, Integer size);
+    
+    /**
+     * 获取消息上下文（用于搜索跳转定位）
+     * @param userId 当前用户ID
+     * @param messageId 消息ID
+     * @param contextSize 上下文消息数量（前后各取多少条）
+     * @return 包含目标消息及其上下文的消息列表
+     */
+    Map<String, Object> getMessageContext(Long userId, Long messageId, Integer contextSize);
 }

@@ -167,4 +167,145 @@
         WHERE id = #{messageId}
     </update>
 
+    <!-- 搜索消息 -->
+    <select id="searchMessages" resultMap="BaseResultMap">
+        SELECT m.*
+        FROM message m
+        LEFT JOIN message_delete md ON m.id = md.message_id AND md.user_id = #{userId}
+        WHERE md.id IS NULL
+          AND m.status = 1
+          AND m.msg_type = 1
+          AND m.content LIKE CONCAT('%', #{keyword}, '%')
+          AND (
+              <!-- 用户参与的单聊消息 -->
+              (m.chat_type = 1 AND (m.from_user_id = #{userId} OR m.to_id = #{userId}))
+              OR
+              <!-- 用户所在群组的消息（需要通过 groupIds 参数传入） -->
+              <if test="groupIds != null and groupIds.size() > 0">
+                  (m.chat_type = 2 AND m.to_id IN
+                  <foreach collection="groupIds" item="groupId" open="(" separator="," close=")">
+                      #{groupId}
+                  </foreach>)
+              </if>
+              <if test="groupIds == null or groupIds.size() == 0">
+                  1 = 0
+              </if>
+          )
+          <!-- 指定会话搜索 -->
+          <if test="chatType != null and targetId != null">
+              <choose>
+                  <when test="chatType == 1">
+                      AND m.chat_type = 1
+                      AND ((m.from_user_id = #{userId} AND m.to_id = #{targetId})
+                           OR (m.from_user_id = #{targetId} AND m.to_id = #{userId}))
+                  </when>
+                  <when test="chatType == 2">
+                      AND m.chat_type = 2
+                      AND m.to_id = #{targetId}
+                  </when>
+              </choose>
+          </if>
+          <!-- 时间范围 -->
+          <if test="startTime != null">
+              AND m.send_time &gt;= #{startTime}
+          </if>
+          <if test="endTime != null">
+              AND m.send_time &lt;= #{endTime}
+          </if>
+        ORDER BY m.send_time DESC
+        LIMIT #{offset}, #{limit}
+    </select>
+    
+    <!-- 查询消息上下文（包含目标消息及其前后的消息） -->
+    <select id="selectMessageContext" resultMap="BaseResultMap">
+        (
+            SELECT m.*
+            FROM message m
+            LEFT JOIN message_delete md ON m.id = md.message_id AND md.user_id = #{userId}
+            WHERE md.id IS NULL
+              AND m.status >= 0
+              <choose>
+                  <when test="chatType == 1">
+                      AND m.chat_type = 1
+                      AND ((m.from_user_id = #{userId} AND m.to_id = #{targetId})
+                           OR (m.from_user_id = #{targetId} AND m.to_id = #{userId}))
+                  </when>
+                  <when test="chatType == 2">
+                      AND m.chat_type = 2
+                      AND m.to_id = #{targetId}
+                  </when>
+              </choose>
+              AND m.send_time &lt;= (SELECT send_time FROM message WHERE id = #{messageId})
+            ORDER BY m.send_time DESC
+            LIMIT #{contextSize}
+        )
+        UNION ALL
+        (
+            SELECT m.*
+            FROM message m
+            LEFT JOIN message_delete md ON m.id = md.message_id AND md.user_id = #{userId}
+            WHERE md.id IS NULL
+              AND m.status >= 0
+              AND m.id != #{messageId}
+              <choose>
+                  <when test="chatType == 1">
+                      AND m.chat_type = 1
+                      AND ((m.from_user_id = #{userId} AND m.to_id = #{targetId})
+                           OR (m.from_user_id = #{targetId} AND m.to_id = #{userId}))
+                  </when>
+                  <when test="chatType == 2">
+                      AND m.chat_type = 2
+                      AND m.to_id = #{targetId}
+                  </when>
+              </choose>
+              AND m.send_time &gt; (SELECT send_time FROM message WHERE id = #{messageId})
+            ORDER BY m.send_time ASC
+            LIMIT #{contextSize}
+        )
+        ORDER BY send_time DESC
+    </select>
+
+    <!-- 统计搜索结果数量 -->
+    <select id="countSearchMessages" resultType="int">
+        SELECT COUNT(*)
+        FROM message m
+        LEFT JOIN message_delete md ON m.id = md.message_id AND md.user_id = #{userId}
+        WHERE md.id IS NULL
+          AND m.status = 1
+          AND m.msg_type = 1
+          AND m.content LIKE CONCAT('%', #{keyword}, '%')
+          AND (
+              (m.chat_type = 1 AND (m.from_user_id = #{userId} OR m.to_id = #{userId}))
+              OR
+              <if test="groupIds != null and groupIds.size() > 0">
+                  (m.chat_type = 2 AND m.to_id IN
+                  <foreach collection="groupIds" item="groupId" open="(" separator="," close=")">
+                      #{groupId}
+                  </foreach>)
+              </if>
+              <if test="groupIds == null or groupIds.size() == 0">
+                  1 = 0
+              </if>
+          )
+          <if test="chatType != null and targetId != null">
+              <choose>
+                  <when test="chatType == 1">
+                      AND m.chat_type = 1
+                      AND ((m.from_user_id = #{userId} AND m.to_id = #{targetId})
+                           OR (m.from_user_id = #{targetId} AND m.to_id = #{userId}))
+                  </when>
+                  <when test="chatType == 2">
+                      AND m.chat_type = 2
+                      AND m.to_id = #{targetId}
+                  </when>
+              </choose>
+          </if>
+          <if test="startTime != null">
+              AND m.send_time &gt;= #{startTime}
+          </if>
+          <if test="endTime != null">
+              AND m.send_time &lt;= #{endTime}
+          </if>
+    </select>
+
 </mapper>

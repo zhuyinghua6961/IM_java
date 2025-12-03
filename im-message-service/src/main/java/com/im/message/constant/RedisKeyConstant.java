@@ -112,4 +112,20 @@ public class RedisKeyConstant {
     public static String getMessageLockKey(Long messageId) {
         return MESSAGE_LOCK_PREFIX + messageId;
     }
+    
+    /**
+     * 会话缓存加载标记 Key前缀
+     * 格式: msg:conv:loaded:{conversationId}
+     * 类型: String
+     * 值: "1"
+     * 过期时间: 30分钟
+     */
+    public static final String CONVERSATION_LOADED_PREFIX = "msg:conv:loaded:";
+    
+    /**
+     * 生成会话缓存加载标记Key
+     */
+    public static String getConversationLoadedKey(String conversationId) {
+        return CONVERSATION_LOADED_PREFIX + conversationId;
+    }
 }

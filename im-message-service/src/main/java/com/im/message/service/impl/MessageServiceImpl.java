@@ -185,41 +185,43 @@ public class MessageServiceImpl implements MessageService {
         log.debug("获取历史消息，userId: {}, targetId: {}, chatType: {}, page: {}, size: {}", 
                 userId, targetId, chatType, page, size);
         
+        // 生成会话ID
+        String conversationId = chatType == 1 
+            ? messageCacheService.generateConversationId(userId, targetId)
+            : String.valueOf(targetId);
+        
         List<Message> resultMessages = new ArrayList<>();
         
-        // 仅第一页先查Redis缓存（单聊/群聊），后续页直接使用MySQL
-        if (page == 1) {
-            if (chatType == 1) {
-                String conversationId = messageCacheService.generateConversationId(userId, targetId);
-                List<Message> cachedMessages = messageCacheService.getConversationMessagesFromCache(conversationId, 100);
-                
-                // 过滤已删除的消息
-                for (Message msg : cachedMessages) {
-                    if (!messageCacheService.isMessageDeleted(userId, msg.getId())) {
-                        resultMessages.add(msg);
-                    }
+        // 检查缓存是否已加载
+        boolean cacheLoaded = messageCacheService.isConversationCacheLoaded(conversationId);
+        
+        if (cacheLoaded) {
+            // 缓存已加载，直接从Redis获取
+            List<Message> cachedMessages = messageCacheService.getConversationMessagesFromCache(conversationId, size);
+            
+            // 过滤已删除的消息
+            for (Message msg : cachedMessages) {
+                if (!messageCacheService.isMessageDeleted(userId, msg.getId())) {
+                    resultMessages.add(msg);
                 }
-                
-                log.debug("Redis缓存命中消息数: {}", resultMessages.size());
-            } else if (chatType == 2) {
-                // 群聊：使用groupId作为会话ID，从Redis读取最近的群聊消息
-                String conversationId = String.valueOf(targetId);
-                List<Message> cachedMessages = messageCacheService.getConversationMessagesFromCache(conversationId, 100);
-
-                for (Message msg : cachedMessages) {
-                    if (!messageCacheService.isMessageDeleted(userId, msg.getId())) {
-                        resultMessages.add(msg);
-                    }
-                }
-
-                log.debug("Redis缓存命中群聊消息数: {}", resultMessages.size());
             }
+            log.debug("从Redis缓存获取消息: conversationId={}, count={}", conversationId, resultMessages.size());
         }
         
-        // Redis不够或群聊，查MySQL补充
-        if (resultMessages.size() < size) {
+        // 缓存未加载或不够，从MySQL获取
+        if (!cacheLoaded || resultMessages.size() < size) {
             int offset = (page - 1) * size;
-            List<Message> dbMessages = messageMapper.selectHistoryMessages(userId, targetId, chatType, offset, size);
+            // 加载较多消息用于缓存
+            int loadSize = Math.max(size, 500);
+            List<Message> dbMessages = messageMapper.selectHistoryMessages(userId, targetId, chatType, offset, loadSize);
+            
+            log.debug("从MySQL查询消息: count={}", dbMessages.size());
+            
+            // 如果缓存未加载，将MySQL数据加载到Redis
+            if (!cacheLoaded && !dbMessages.isEmpty()) {
+                messageCacheService.loadHistoryMessagesToCache(conversationId, dbMessages);
+                messageCacheService.markConversationCacheLoaded(conversationId);
+            }
             
             // 合并去重
             Set<Long> existIds = resultMessages.stream()
@@ -231,8 +233,6 @@ public class MessageServiceImpl implements MessageService {
                     resultMessages.add(msg);
                 }
             }
-            
-            log.debug("MySQL查询消息数: {}", dbMessages.size());
         }
         
         // 按时间倒序排序
@@ -240,9 +240,8 @@ public class MessageServiceImpl implements MessageService {
         
         // 分页处理
         int total = messageMapper.countHistoryMessages(userId, targetId, chatType);
-        int startIndex = 0;
         int endIndex = Math.min(size, resultMessages.size());
-        List<Message> pagedMessages = resultMessages.subList(startIndex, endIndex);
+        List<Message> pagedMessages = resultMessages.subList(0, endIndex);
         
         // 组装结果
         Map<String, Object> result = new HashMap<>();
@@ -389,5 +388,105 @@ public class MessageServiceImpl implements MessageService {
         messageCacheService.markMessageAsDeleted(userId, messageId);
         
         log.info("删除消息成功（数据库+Redis），messageId: {}, userId: {}", messageId, userId);
+    }
+    
+    @Override
+    public Map<String, Object> searchMessages(Long userId, String keyword, Integer chatType, Long targetId, Integer page, Integer size) {
+        log.info("搜索消息，userId: {}, keyword: {}, chatType: {}, targetId: {}, page: {}, size: {}", 
+                userId, keyword, chatType, targetId, page, size);
+        
+        if (keyword == null || keyword.trim().isEmpty()) {
+            throw new BusinessException(ResultCode.BAD_REQUEST, "搜索关键词不能为空");
+        }
+        
+        // 获取用户所在的所有群组ID
+        List<GroupMember> groupMembers = groupMemberMapper.selectByUserId(userId);
+        List<Long> groupIds = groupMembers.stream()
+                .map(GroupMember::getGroupId)
+                .collect(Collectors.toList());
+        
+        int offset = (page - 1) * size;
+        
+        // 搜索消息
+        List<Message> messages = messageMapper.searchMessages(
+                userId, keyword.trim(), groupIds, chatType, targetId, null, null, offset, size);
+        
+        // 统计总数
+        int total = messageMapper.countSearchMessages(
+                userId, keyword.trim(), groupIds, chatType, targetId, null, null);
+        
+        // 转换为返回格式（id 转为 String 避免 JavaScript 精度丢失）
+        List<Map<String, Object>> resultList = new ArrayList<>();
+        for (Message msg : messages) {
+            Map<String, Object> item = new HashMap<>();
+            item.put("id", String.valueOf(msg.getId()));
+            item.put("fromUserId", String.valueOf(msg.getFromUserId()));
+            item.put("toId", String.valueOf(msg.getToId()));
+            item.put("chatType", msg.getChatType());
+            item.put("msgType", msg.getMsgType());
+            item.put("content", msg.getContent());
+            item.put("sendTime", msg.getSendTime());
+            resultList.add(item);
+        }
+        
+        Map<String, Object> result = new HashMap<>();
+        result.put("list", resultList);
+        result.put("total", total);
+        result.put("page", page);
+        result.put("size", size);
+        
+        return result;
+    }
+    
+    @Override
+    public Map<String, Object> getMessageContext(Long userId, Long messageId, Integer contextSize) {
+        log.info("获取消息上下文，userId: {}, messageId: {}, contextSize: {}", userId, messageId, contextSize);
+        
+        // 1. 先从数据库查询目标消息
+        Message targetMessage = messageMapper.selectById(messageId);
+        if (targetMessage == null) {
+            throw new BusinessException(ResultCode.NOT_FOUND, "消息不存在");
+        }
+        
+        // 2. 确定会话信息
+        Integer chatType = targetMessage.getChatType();
+        Long targetId;
+        if (chatType == 1) {
+            // 单聊：确定对方ID
+            targetId = targetMessage.getFromUserId().equals(userId) 
+                ? targetMessage.getToId() 
+                : targetMessage.getFromUserId();
+        } else {
+            // 群聊：使用群ID
+            targetId = targetMessage.getToId();
+        }
+        
+        // 3. 查询消息上下文
+        List<Message> contextMessages = messageMapper.selectMessageContext(
+            userId, targetId, chatType, messageId, contextSize
+        );
+        
+        // 4. 生成会话ID并缓存到Redis
+        String conversationId = chatType == 1 
+            ? messageCacheService.generateConversationId(userId, targetId)
+            : String.valueOf(targetId);
+        
+        if (!contextMessages.isEmpty()) {
+            messageCacheService.loadHistoryMessagesToCache(conversationId, contextMessages);
+            messageCacheService.markConversationCacheLoaded(conversationId);
+        }
+        
+        // 5. 按时间倒序排序
+        contextMessages.sort((m1, m2) -> m2.getSendTime().compareTo(m1.getSendTime()));
+        
+        // 6. 组装结果
+        Map<String, Object> result = new HashMap<>();
+        result.put("list", contextMessages);
+        result.put("targetId", targetId);
+        result.put("chatType", chatType);
+        result.put("messageId", messageId);
+        
+        log.info("获取消息上下文成功，消息数: {}", contextMessages.size());
+        return result;
     }
 }

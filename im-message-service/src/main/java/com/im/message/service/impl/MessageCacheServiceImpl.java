@@ -292,4 +292,42 @@ public class MessageCacheServiceImpl implements MessageCacheService {
         long max = Math.max(userId1, userId2);
         return min + "_" + max;
     }
+    
+    @Override
+    public boolean isConversationCacheLoaded(String conversationId) {
+        String loadedKey = RedisKeyConstant.getConversationLoadedKey(conversationId);
+        return Boolean.TRUE.equals(redisTemplate.hasKey(loadedKey));
+    }
+    
+    @Override
+    public void loadHistoryMessagesToCache(String conversationId, List<Message> messages) {
+        if (messages == null || messages.isEmpty()) {
+            return;
+        }
+        
+        String convKey = RedisKeyConstant.getConversationMessagesKey(conversationId);
+        
+        // 清空现有缓存
+        redisTemplate.delete(convKey);
+        
+        // 按时间倒序排列（最新的在前）
+        messages.sort((m1, m2) -> m2.getSendTime().compareTo(m1.getSendTime()));
+        
+        // 批量写入 Redis
+        for (Message msg : messages) {
+            redisTemplate.opsForList().rightPush(convKey, JSON.toJSONString(msg));
+        }
+        
+        // 设置 TTL
+        redisTemplate.expire(convKey, cacheExpireMinutes, TimeUnit.MINUTES);
+        
+        log.info("加载历史消息到Redis缓存: conversationId={}, count={}", conversationId, messages.size());
+    }
+    
+    @Override
+    public void markConversationCacheLoaded(String conversationId) {
+        String loadedKey = RedisKeyConstant.getConversationLoadedKey(conversationId);
+        redisTemplate.opsForValue().set(loadedKey, "1", cacheExpireMinutes, TimeUnit.MINUTES);
+        log.debug("标记会话缓存已加载: conversationId={}", conversationId);
+    }
 }

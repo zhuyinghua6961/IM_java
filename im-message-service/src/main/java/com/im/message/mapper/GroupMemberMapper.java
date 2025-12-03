@@ -21,4 +21,9 @@ public interface GroupMemberMapper {
      * 查询群成员列表
      */
     List<GroupMember> selectByGroupId(@Param("groupId") Long groupId);
+    
+    /**
+     * 查询用户所在的所有群组
+     */
+    List<GroupMember> selectByUserId(@Param("userId") Long userId);
 }
