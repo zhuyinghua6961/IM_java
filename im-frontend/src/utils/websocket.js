@@ -112,8 +112,15 @@ class WebSocketClient {
         this.stompClient.subscribe('/user/queue/messages', (message) => {
           const data = JSON.parse(message.body)
           
-          // 检测是否被@，显示通知
+          // 检测是否被@
           if (data.isAtMe && data.chatType === 2) {
+            const chatStore = useChatStore()
+            const conversationId = `2-${data.groupId}`
+            
+            // 设置会话的@状态
+            chatStore.setHasAtMe(conversationId, true)
+            
+            // 被@时始终弹出通知（无论是否免打扰）
             ElNotification({
               title: '有人@了你',
               message: data.content?.substring(0, 50) + (data.content?.length > 50 ? '...' : ''),

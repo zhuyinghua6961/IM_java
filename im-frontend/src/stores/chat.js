@@ -49,6 +49,37 @@ export const useChatStore = defineStore('chat', () => {
   const clearUnreadCount = (conversationId) => {
     updateUnreadCount(conversationId, 0)
   }
+  
+  // 设置会话的@状态（被@时设为true）
+  const setHasAtMe = (conversationId, hasAtMe) => {
+    const conversation = conversations.value.find(c => c.id === conversationId)
+    if (conversation) {
+      conversation.hasAtMe = hasAtMe
+    }
+    // 持久化到 localStorage
+    const atMeMap = JSON.parse(localStorage.getItem('hasAtMeMap') || '{}')
+    if (hasAtMe) {
+      atMeMap[conversationId] = true
+    } else {
+      delete atMeMap[conversationId]
+    }
+    localStorage.setItem('hasAtMeMap', JSON.stringify(atMeMap))
+  }
+  
+  // 清除会话的@状态
+  const clearHasAtMe = (conversationId) => {
+    setHasAtMe(conversationId, false)
+  }
+  
+  // 从 localStorage 恢复@状态
+  const restoreHasAtMe = () => {
+    const atMeMap = JSON.parse(localStorage.getItem('hasAtMeMap') || '{}')
+    for (const conv of conversations.value) {
+      if (atMeMap[conv.id]) {
+        conv.hasAtMe = true
+      }
+    }
+  }
 
   return {
     conversations,
@@ -60,6 +91,9 @@ export const useChatStore = defineStore('chat', () => {
     addMessage,
     setMessages,
     updateUnreadCount,
-    clearUnreadCount
+    clearUnreadCount,
+    setHasAtMe,
+    clearHasAtMe,
+    restoreHasAtMe
   }
 })

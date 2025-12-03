@@ -8,12 +8,13 @@
         <result column="friend_id" property="friendId"/>
         <result column="remark" property="remark"/>
         <result column="status" property="status"/>
+        <result column="muted" property="muted"/>
         <result column="create_time" property="createTime"/>
         <result column="update_time" property="updateTime"/>
     </resultMap>
 
     <sql id="Base_Column_List">
-        id, user_id, friend_id, remark, status, create_time, update_time
+        id, user_id, friend_id, remark, status, muted, create_time, update_time
     </sql>
 
     <!-- 插入好友关系 -->
@@ -69,13 +70,38 @@
             u.avatar,
             u.gender,
             u.signature,
-            f.remark
+            f.remark,
+            f.muted
         FROM friend f
         INNER JOIN user u ON f.friend_id = u.id
         WHERE f.user_id = #{userId} 
           AND f.status = 1
           AND u.status = 1
         ORDER BY f.create_time DESC
+    </select>
+
+    <!-- 更新好友免打扰状态 -->
+    <update id="updateMuted">
+        UPDATE friend
+        SET muted = #{muted}, update_time = NOW()
+        WHERE user_id = #{userId} AND friend_id = #{friendId} AND status = 1
+    </update>
+    
+    <!-- 查询免打扰好友列表 -->
+    <select id="selectMutedFriendList" resultType="map">
+        SELECT 
+            u.id as userId,
+            u.username,
+            u.nickname,
+            u.avatar,
+            f.remark
+        FROM friend f
+        INNER JOIN user u ON f.friend_id = u.id
+        WHERE f.user_id = #{userId} 
+          AND f.status = 1
+          AND f.muted = 1
+          AND u.status = 1
+        ORDER BY f.update_time DESC
     </select>
 
 </mapper>

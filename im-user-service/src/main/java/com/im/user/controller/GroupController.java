@@ -175,11 +175,31 @@ public class GroupController {
     /**
      * 转让群主（群主专用）
      */
-    @PostMapping("/{groupId}/transfer")
-    public Result<Void> transferOwner(@PathVariable("groupId") Long groupId,
+    @PostMapping("/{groupId}/transfer-owner")
+    public Result<Void> transferOwner(@PathVariable Long groupId,
                                       @RequestBody Map<String, Object> request) {
         Long newOwnerId = Long.valueOf(request.get("newOwnerId").toString());
         groupService.transferOwner(groupId, newOwnerId);
         return Result.success();
+    }
+    
+    /**
+     * 设置群免打扰
+     */
+    @PostMapping("/{groupId}/mute")
+    public Result<Void> setGroupMuted(@PathVariable("groupId") Long groupId,
+                                      @RequestBody Map<String, Object> request) {
+        boolean muted = Boolean.parseBoolean(request.get("muted").toString());
+        groupService.setGroupMuted(groupId, muted);
+        return Result.success();
+    }
+    
+    /**
+     * 获取群免打扰状态
+     */
+    @GetMapping("/{groupId}/mute")
+    public Result<Boolean> isGroupMuted(@PathVariable("groupId") Long groupId) {
+        boolean muted = groupService.isGroupMuted(groupId);
+        return Result.success(muted);
     }
 }

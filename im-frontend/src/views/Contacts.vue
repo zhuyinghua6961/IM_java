@@ -35,6 +35,10 @@
           <el-icon><Close /></el-icon>
           <span>黑名单</span>
         </el-menu-item>
+        <el-menu-item index="muted">
+          <el-icon><BellFilled /></el-icon>
+          <span>免打扰</span>
+        </el-menu-item>
       </el-menu>
     </div>
     
@@ -264,6 +268,27 @@
               </div>
               <el-button type="primary" size="small" @click="handleUnblock(item)">
                 解除拉黑
+              </el-button>
+            </div>
+          </div>
+        </div>
+        
+        <!-- 免打扰列表 -->
+        <div v-else-if="activeTab === 'muted'">
+          <div v-if="mutedFriends.length === 0" class="empty-requests">
+            <el-empty description="暂无免打扰联系人" />
+          </div>
+          <div v-else>
+            <div v-for="item in mutedFriends" :key="item.userId" class="contact-item">
+              <el-avatar :size="40" :src="item.avatar">
+                {{ (item.nickname || item.username)?.charAt(0) }}
+              </el-avatar>
+              <div class="blacklist-info">
+                <span class="contact-name">{{ item.remark || item.nickname || item.username }}</span>
+                <span class="blacklist-time">已设置免打扰</span>
+              </div>
+              <el-button type="primary" size="small" @click="handleUnmuteFriend(item)">
+                取消免打扰
               </el-button>
             </div>
           </div>
@@ -754,8 +779,8 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { MoreFilled, ChatDotRound, Delete, InfoFilled, Close, Message, Plus, User, Bell, UserFilled, Edit } from '@element-plus/icons-vue'
-import { getFriendList, addFriend, handleFriendRequest, updateFriendRemark, blockUser, unblockUser, getBlacklist } from '@/api/friend'
+import { MoreFilled, ChatDotRound, Delete, InfoFilled, Close, Message, Plus, User, Bell, UserFilled, Edit, BellFilled } from '@element-plus/icons-vue'
+import { getFriendList, addFriend, handleFriendRequest, updateFriendRemark, blockUser, unblockUser, getBlacklist, getMutedFriendList, setFriendMuted } from '@/api/friend'
 import { searchUser } from '@/api/user'
 import { 
   getGroupList, 
@@ -801,6 +826,7 @@ const friendRequests = ref([])
 const groupInvitations = ref([])
 const groupNotifications = ref([])
 const blacklist = ref([])
+const mutedFriends = ref([])
 const currentGroup = ref(null)
 const currentFriend = ref(null)
 const groupMembers = ref([])
@@ -894,6 +920,8 @@ const handleTabSelect = (index) => {
     loadGroupList()
   } else if (index === 'blacklist') {
     loadBlacklist()
+  } else if (index === 'muted') {
+    loadMutedFriends()
   }
 }
 
@@ -1160,6 +1188,29 @@ const handleUnblock = async (item) => {
       console.error('解除拉黑失败:', error)
       ElMessage.error('解除拉黑失败')
     }
+  }
+}
+
+// 加载免打扰好友列表
+const loadMutedFriends = async () => {
+  try {
+    const res = await getMutedFriendList()
+    mutedFriends.value = res.data || []
+  } catch (error) {
+    console.error('加载免打扰列表失败:', error)
+    mutedFriends.value = []
+  }
+}
+
+// 取消好友免打扰
+const handleUnmuteFriend = async (item) => {
+  try {
+    await setFriendMuted(item.userId, false)
+    ElMessage.success('已取消免打扰')
+    await loadMutedFriends()
+  } catch (error) {
+    console.error('取消免打扰失败:', error)
+    ElMessage.error('取消免打扰失败')
   }
 }
 

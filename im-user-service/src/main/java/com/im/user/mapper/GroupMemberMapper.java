@@ -65,4 +65,9 @@ public interface GroupMemberMapper {
      * 查询群组的管理员和群主（用于通知）
      */
     List<GroupMember> selectAdminsByGroupId(@Param("groupId") Long groupId);
+    
+    /**
+     * 更新免打扰状态
+     */
+    int updateMuted(@Param("groupId") Long groupId, @Param("userId") Long userId, @Param("muted") Integer muted);
 }

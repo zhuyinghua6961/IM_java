@@ -81,7 +81,10 @@ const chatStore = useChatStore()
 const activeMenu = computed(() => route.path)
 
 const totalUnread = computed(() => {
-  return chatStore.conversations.reduce((sum, conv) => sum + (conv.unreadCount || 0), 0)
+  // 统计非免打扰会话的未读数 + 免打扰但被@的会话的未读数
+  return chatStore.conversations
+    .filter(conv => !conv.muted || conv.hasAtMe)
+    .reduce((sum, conv) => sum + (conv.unreadCount || 0), 0)
 })
 
 const handleMenuSelect = (index) => {
@@ -102,19 +105,8 @@ const handleLogout = () => {
 
 // 处理接收到的消息
 const handleMessageReceived = (message) => {
-  console.log('收到消息:', message)
-  
-  if (message.type === 'MESSAGE') {
-    // 添加到消息列表
-    const conversationId = message.data.chatType === 1 
-      ? message.data.fromUserId 
-      : message.data.toId
-    
-    chatStore.addMessage(conversationId, message.data)
-    
-    // 更新会话列表
-    loadConversations()
-  }
+  // 消息处理已由 Chat.vue 的 MessageSyncManager 统一处理
+  // 这里只做简单日志记录，不重复处理
 }
 
 // 加载会话列表
@@ -128,11 +120,10 @@ const loadConversations = async () => {
 }
 
 onMounted(() => {
-  // 连接WebSocket并加载会话列表
+  // 连接WebSocket
   // 注意：需要先启动 im-message-service (8082端口)
-  // 如果消息服务未启动，注释掉下面两行
   websocket.connect(userStore.token, handleMessageReceived)
-  loadConversations()
+  // 会话列表由 Chat.vue 统一加载和处理
   
   // 启动心跳
   const heartbeatInterval = setInterval(() => {

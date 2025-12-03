@@ -11,6 +11,7 @@
         <result column="nickname" property="nickname"/>
         <result column="join_time" property="joinTime"/>
         <result column="status" property="status"/>
+        <result column="muted" property="muted"/>
         <result column="create_time" property="createTime"/>
         <result column="update_time" property="updateTime"/>
     </resultMap>
@@ -131,5 +132,14 @@
           AND role IN (1, 2)  -- 1=管理员, 2=群主
         ORDER BY role DESC
     </select>
+    
+    <!-- 更新免打扰状态 -->
+    <update id="updateMuted">
+        UPDATE group_member
+        SET muted = #{muted}
+        WHERE group_id = #{groupId}
+          AND user_id = #{userId}
+          AND status = 1
+    </update>
 
 </mapper>

@@ -102,3 +102,34 @@ export function checkBlocked(targetUserId) {
     method: 'get'
   })
 }
+
+/**
+ * 设置好友免打扰
+ */
+export function setFriendMuted(friendId, muted) {
+  return request({
+    url: `/friend/${friendId}/mute`,
+    method: 'post',
+    data: { muted }
+  })
+}
+
+/**
+ * 获取好友免打扰状态
+ */
+export function getFriendMuted(friendId) {
+  return request({
+    url: `/friend/${friendId}/mute`,
+    method: 'get'
+  })
+}
+
+/**
+ * 获取免打扰好友列表
+ */
+export function getMutedFriendList() {
+  return request({
+    url: '/friend/muted/list',
+    method: 'get'
+  })
+}

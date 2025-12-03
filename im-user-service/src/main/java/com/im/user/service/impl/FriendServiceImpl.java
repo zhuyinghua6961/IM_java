@@ -438,4 +438,46 @@ public class FriendServiceImpl implements FriendService {
         log.info("=== 黑名单记录: {}, 结果: {} ===", blocked, result);
         return result;
     }
+    
+    @Override
+    public void setFriendMuted(Long friendId, boolean muted) {
+        Long userId = UserContext.getCurrentUserId();
+        log.info("设置好友免打扰，userId: {}, friendId: {}, muted: {}", userId, friendId, muted);
+        
+        if (userId == null) {
+            throw new BusinessException(ResultCode.UNAUTHORIZED, "用户未登录");
+        }
+        
+        // 检查是否是好友
+        Friend friend = friendMapper.selectActiveFriendship(userId, friendId);
+        if (friend == null) {
+            throw new BusinessException(ResultCode.BAD_REQUEST, "对方不是你的好友");
+        }
+        
+        // 更新免打扰状态
+        int updated = friendMapper.updateMuted(userId, friendId, muted ? 1 : 0);
+        if (updated > 0) {
+            log.info("设置好友免打扰成功，userId: {}, friendId: {}, muted: {}", userId, friendId, muted);
+        }
+    }
+    
+    @Override
+    public boolean isFriendMuted(Long friendId) {
+        Long userId = UserContext.getCurrentUserId();
+        if (userId == null) {
+            return false;
+        }
+        
+        Friend friend = friendMapper.selectActiveFriendship(userId, friendId);
+        return friend != null && friend.getMuted() != null && friend.getMuted() == 1;
+    }
+    
+    @Override
+    public List<Map<String, Object>> getMutedFriendList() {
+        Long userId = UserContext.getCurrentUserId();
+        if (userId == null) {
+            throw new BusinessException(ResultCode.UNAUTHORIZED, "用户未登录");
+        }
+        return friendMapper.selectMutedFriendList(userId);
+    }
 }

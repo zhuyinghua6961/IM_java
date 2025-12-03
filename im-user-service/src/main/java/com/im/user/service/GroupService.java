@@ -105,4 +105,18 @@ public interface GroupService {
      * @param newOwnerId 新群主的用户ID
      */
     void transferOwner(Long groupId, Long newOwnerId);
+    
+    /**
+     * 设置群免打扰
+     * @param groupId 群组ID
+     * @param muted 是否免打扰
+     */
+    void setGroupMuted(Long groupId, boolean muted);
+    
+    /**
+     * 获取群免打扰状态
+     * @param groupId 群组ID
+     * @return 是否免打扰
+     */
+    boolean isGroupMuted(Long groupId);
 }

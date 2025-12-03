@@ -1213,4 +1213,37 @@ public class GroupServiceImpl implements GroupService {
         // 7. 返回更新后的群组信息
         return getGroupById(groupId);
     }
+    
+    @Override
+    public void setGroupMuted(Long groupId, boolean muted) {
+        Long userId = UserContext.getCurrentUserId();
+        log.info("设置群免打扰，userId: {}, groupId: {}, muted: {}", userId, groupId, muted);
+        
+        if (userId == null) {
+            throw new BusinessException(ResultCode.UNAUTHORIZED, "用户未登录");
+        }
+        
+        // 检查是否是群成员
+        GroupMember member = groupMemberMapper.selectByGroupIdAndUserId(groupId, userId);
+        if (member == null) {
+            throw new BusinessException(ResultCode.FORBIDDEN, "你不是该群成员");
+        }
+        
+        // 更新免打扰状态
+        int updated = groupMemberMapper.updateMuted(groupId, userId, muted ? 1 : 0);
+        if (updated > 0) {
+            log.info("设置群免打扰成功，userId: {}, groupId: {}, muted: {}", userId, groupId, muted);
+        }
+    }
+    
+    @Override
+    public boolean isGroupMuted(Long groupId) {
+        Long userId = UserContext.getCurrentUserId();
+        if (userId == null) {
+            return false;
+        }
+        
+        GroupMember member = groupMemberMapper.selectByGroupIdAndUserId(groupId, userId);
+        return member != null && member.getMuted() != null && member.getMuted() == 1;
+    }
 }

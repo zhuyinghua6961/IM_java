@@ -30,4 +30,9 @@ public class Friend extends BaseEntity {
      * 状态 0-已删除 1-正常
      */
     private Integer status;
+    
+    /**
+     * 免打扰 0-正常 1-免打扰
+     */
+    private Integer muted;
 }

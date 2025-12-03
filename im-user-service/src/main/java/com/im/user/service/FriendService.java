@@ -6,6 +6,7 @@ import com.im.user.entity.FriendRequest;
 import com.im.user.vo.BlacklistVO;
 import com.im.user.vo.FriendVO;
 import java.util.List;
+import java.util.Map;
 
 public interface FriendService {
     /**
@@ -74,4 +75,24 @@ public interface FriendService {
      * @return 是否被拉黑
      */
     boolean checkBlockedInternal(Long blockerId, Long blockedId);
+    
+    /**
+     * 设置好友免打扰
+     * @param friendId 好友ID
+     * @param muted 是否免打扰
+     */
+    void setFriendMuted(Long friendId, boolean muted);
+    
+    /**
+     * 获取好友免打扰状态
+     * @param friendId 好友ID
+     * @return 是否免打扰
+     */
+    boolean isFriendMuted(Long friendId);
+    
+    /**
+     * 获取免打扰好友列表
+     * @return 免打扰好友列表
+     */
+    List<Map<String, Object>> getMutedFriendList();
 }

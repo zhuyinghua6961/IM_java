@@ -14,4 +14,5 @@ public class GroupMember extends BaseEntity {
     private String nickname;
     private LocalDateTime joinTime;
     private Integer status;
+    private Integer muted; // 免打扰：0-正常，1-免打扰
 }

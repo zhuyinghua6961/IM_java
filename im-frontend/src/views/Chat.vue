@@ -24,7 +24,11 @@
           @click="selectConversation(conv)"
           @contextmenu.prevent="showContextMenu($event, conv)"
         >
-          <el-badge :value="conv.unreadCount" :hidden="conv.unreadCount === 0">
+          <el-badge 
+            :value="(conv.muted && !conv.hasAtMe) ? '' : conv.unreadCount" 
+            :is-dot="conv.muted && !conv.hasAtMe && conv.unreadCount > 0"
+            :hidden="conv.unreadCount === 0"
+          >
             <el-avatar :size="48" :src="conv.targetAvatar">
               {{ conv.targetName?.charAt(0) }}
             </el-avatar>
@@ -34,6 +38,7 @@
               <span class="conv-name">
                 <el-icon v-if="conv.isPinned" class="pin-icon"><Top /></el-icon>
                 {{ conv.targetName }}
+                <el-icon v-if="conv.muted" class="mute-icon" title="消息免打扰"><BellFilled /></el-icon>
               </span>
               <span class="conv-time">{{ formatTime(conv.lastMsgTime) }}</span>
             </div>
@@ -55,6 +60,12 @@
                   <el-dropdown-item :command="{ action: 'unpin', conv }" v-if="conv.isPinned">
                     <el-icon><Bottom /></el-icon>
                     取消置顶
+                  </el-dropdown-item>
+                  <el-dropdown-item 
+                    :command="{ action: conv.muted ? 'unmute' : 'mute', conv }"
+                  >
+                    <el-icon><BellFilled /></el-icon>
+                    {{ conv.muted ? '取消免打扰' : '消息免打扰' }}
                   </el-dropdown-item>
                   <el-dropdown-item :command="{ action: 'hide', conv }">
                     <el-icon><Hide /></el-icon>
@@ -376,9 +387,12 @@ import {
   Top,
   Bottom,
   Delete,
-  Hide
+  Hide,
+  BellFilled
 } from '@element-plus/icons-vue'
 import request from '@/utils/request'
+import { setGroupMuted, getGroupMuted } from '@/api/group'
+import { setFriendMuted, getFriendMuted } from '@/api/friend'
 import { useUserStore } from '@/stores/user'
 import wsClient from '@/utils/websocket'
 import messageSyncManager from '@/utils/MessageSyncManager'
@@ -440,7 +454,10 @@ const conversations = computed(() => {
 })
 const currentUserId = computed(() => userStore.userInfo?.userId || null)
 const totalUnread = computed(() => {
-  return conversations.value.reduce((sum, conv) => sum + (conv.unreadCount || 0), 0)
+  // 统计非免打扰会话的未读数 + 免打扰但被@的会话的未读数
+  return chatStore.conversations
+    .filter(conv => !conv.isHidden && (!conv.muted || conv.hasAtMe))
+    .reduce((sum, conv) => sum + (conv.unreadCount || 0), 0)
 })
 
 // 过滤@成员列表（排除自己）
@@ -556,6 +573,22 @@ const loadConversationList = async () => {
           // 获取对方用户信息
           const userInfo = await getUserInfo(conv.targetId, conv.chatType)
           
+          // 获取免打扰状态
+          let muted = false
+          try {
+            if (conv.chatType === 2) {
+              // 群聊
+              const muteRes = await getGroupMuted(conv.targetId)
+              muted = muteRes.data === true
+            } else if (conv.chatType === 1) {
+              // 单聊
+              const muteRes = await getFriendMuted(conv.targetId)
+              muted = muteRes.data === true
+            }
+          } catch (e) {
+            // 忽略错误
+          }
+          
           return {
             id: `${conv.chatType}-${conv.targetId}`,
             targetId: conv.targetId,
@@ -564,13 +597,17 @@ const loadConversationList = async () => {
             targetAvatar: userInfo.avatar,
             unreadCount: conv.unreadCount || 0,
             lastMessage: conv.lastMessage || '',
-            lastMsgTime: conv.updateTime
+            lastMsgTime: conv.updateTime,
+            muted: muted
           }
         })
       )
       
       // 更新 chatStore
       chatStore.setConversations(conversationsWithUserInfo)
+      
+      // 恢复@状态
+      chatStore.restoreHasAtMe()
       
       console.log('会话列表加载成功:', conversationsWithUserInfo)
     }
@@ -818,12 +855,17 @@ const selectConversation = (conv) => {
   selectedConv.value = conv
   loadHistoryMessages()
   
+  // 清除@状态
+  if (conv.hasAtMe) {
+    chatStore.clearHasAtMe(conv.id)
+  }
+  
   // 更新消息同步管理器的当前会话
   messageSyncManager.setCurrentConversation(conv)
 }
 
 // 发送消息
-const sendMessage = () => {
+const sendMessage = async () => {
   if (!inputMessage.value.trim() || !selectedConv.value) return
   
   const messageData = {
@@ -839,6 +881,10 @@ const sendMessage = () => {
   } else if (selectedConv.value.chatType === 2) {
     // 群聊
     messageData.groupId = selectedConv.value.targetId
+    // 确保群成员列表已加载（用于解析@用户）
+    if (atMembers.value.length === 0) {
+      await loadGroupMembersForAt()
+    }
     // 解析@用户
     const atUserIds = parseAtUsers(messageData.content)
     if (atUserIds) {
@@ -1564,23 +1610,39 @@ const selectAtMember = (member) => {
 
 // 解析消息中的@用户，返回atUserIds
 const parseAtUsers = (content) => {
-  const atUserIds = []
+  const atUserIds = new Set()
   
   // 检查是否有@全体成员
   if (content.includes('@全体成员')) {
     return 'all'
   }
   
-  // 遍历已记录的@用户，检查内容中是否包含
+  // 1. 先检查已记录的@用户（通过选择面板）
   for (const [userId, nickname] of Object.entries(atUserMap.value)) {
     if (content.includes(`@${nickname}`)) {
       if (userId !== 'all') {
-        atUserIds.push(userId)
+        atUserIds.add(userId)
       }
     }
   }
   
-  return atUserIds.length > 0 ? atUserIds.join(',') : null
+  // 2. 再遍历群成员列表匹配（处理直接输入@的情况）
+  for (const member of atMembers.value) {
+    const names = [
+      member.groupNickname,
+      member.nickname,
+      member.username
+    ].filter(Boolean)
+    
+    for (const name of names) {
+      if (content.includes(`@${name}`)) {
+        atUserIds.add(String(member.userId))
+        break
+      }
+    }
+  }
+  
+  return atUserIds.size > 0 ? Array.from(atUserIds).join(',') : null
 }
 
 // 格式化消息内容，高亮@内容
@@ -1695,6 +1757,24 @@ const handleConvAction = async ({ action, conv }) => {
         if (index > -1) {
           conversations.value.splice(index, 1)
         }
+        break
+      case 'mute':
+        if (conv.chatType === 2) {
+          await setGroupMuted(conv.targetId, true)
+        } else if (conv.chatType === 1) {
+          await setFriendMuted(conv.targetId, true)
+        }
+        conv.muted = true
+        ElMessage.success('已开启免打扰')
+        break
+      case 'unmute':
+        if (conv.chatType === 2) {
+          await setGroupMuted(conv.targetId, false)
+        } else if (conv.chatType === 1) {
+          await setFriendMuted(conv.targetId, false)
+        }
+        conv.muted = false
+        ElMessage.success('已取消免打扰')
         break
       case 'delete':
         // 根据聊天类型显示不同的提示
@@ -2112,6 +2192,13 @@ const scrollToBottom = () => {
   color: #409eff;
   font-size: 12px;
   margin-right: 4px;
+}
+
+/* 免打扰图标 */
+.mute-icon {
+  color: #909399;
+  font-size: 12px;
+  margin-left: 4px;
 }
 
 /* 聊天窗口 */

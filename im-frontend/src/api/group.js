@@ -105,3 +105,17 @@ export const updateMyGroupNickname = (groupId, nickname) => {
 export const transferOwner = (groupId, newOwnerId) => {
   return request.post(`/group/${groupId}/transfer`, { newOwnerId })
 }
+
+/**
+ * 设置群免打扰
+ */
+export const setGroupMuted = (groupId, muted) => {
+  return request.post(`/group/${groupId}/mute`, { muted })
+}
+
+/**
+ * 获取群免打扰状态
+ */
+export const getGroupMuted = (groupId) => {
+  return request.get(`/group/${groupId}/mute`)
+}

@@ -1,6 +1,7 @@
 package com.im.user.controller;
 
 import java.util.List;
+import java.util.Map;
 
 import com.im.common.vo.Result;
 import com.im.user.dto.FriendRemarkDTO;
@@ -131,5 +132,33 @@ public class FriendController {
             @org.springframework.web.bind.annotation.RequestParam("blockedId") Long blockedId) {
         boolean blocked = friendService.checkBlockedInternal(blockerId, blockedId);
         return Result.success(blocked);
+    }
+    
+    /**
+     * 设置好友免打扰
+     */
+    @PostMapping("/{friendId}/mute")
+    public Result<Void> setFriendMuted(@PathVariable("friendId") Long friendId,
+                                       @RequestBody Map<String, Object> request) {
+        boolean muted = Boolean.parseBoolean(request.get("muted").toString());
+        friendService.setFriendMuted(friendId, muted);
+        return Result.success();
+    }
+    
+    /**
+     * 获取好友免打扰状态
+     */
+    @GetMapping("/{friendId}/mute")
+    public Result<Boolean> isFriendMuted(@PathVariable("friendId") Long friendId) {
+        boolean muted = friendService.isFriendMuted(friendId);
+        return Result.success(muted);
+    }
+    
+    /**
+     * 获取免打扰好友列表
+     */
+    @GetMapping("/muted/list")
+    public Result<List<Map<String, Object>>> getMutedFriendList() {
+        return Result.success(friendService.getMutedFriendList());
     }
 }

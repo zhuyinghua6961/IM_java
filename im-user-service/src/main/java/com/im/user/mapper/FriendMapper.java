@@ -15,4 +15,14 @@ public interface FriendMapper {
     List<Friend> selectByUserId(@Param("userId") Long userId);
     int deleteById(@Param("id") Long id);
     List<Map<String, Object>> selectFriendListWithUserInfo(@Param("userId") Long userId);
+    
+    /**
+     * 更新好友免打扰状态
+     */
+    int updateMuted(@Param("userId") Long userId, @Param("friendId") Long friendId, @Param("muted") Integer muted);
+    
+    /**
+     * 查询免打扰好友列表
+     */
+    List<Map<String, Object>> selectMutedFriendList(@Param("userId") Long userId);
 }
