@@ -112,6 +112,10 @@
             <span class="target-name">{{ selectedConv.targetName }}</span>
           </div>
           <div class="header-right">
+            <!-- 群公告按钮（仅群聊显示） -->
+            <el-tooltip v-if="selectedConv.chatType === 2" content="群公告" placement="bottom">
+              <el-button text :icon="Bell" @click="showAnnouncementDialog = true" />
+            </el-tooltip>
             <el-button text :icon="MoreFilled" />
           </div>
         </div>
@@ -428,6 +432,86 @@
         </div>
       </div>
     </el-dialog>
+    
+    <!-- 群公告弹窗 -->
+    <el-dialog
+      v-model="showAnnouncementDialog"
+      title="群公告"
+      width="500px"
+      destroy-on-close
+      class="announcement-dialog"
+    >
+      <div class="announcement-content">
+        <!-- 发布公告按钮（仅管理员可见） -->
+        <div v-if="isGroupAdmin" class="announcement-actions">
+          <el-button type="primary" :icon="Plus" @click="openPublishAnnouncement">发布公告</el-button>
+        </div>
+        
+        <!-- 公告列表 -->
+        <div v-loading="announcementLoading" class="announcement-list">
+          <div v-if="announcements.length === 0" class="empty-announcement">
+            <el-empty description="暂无公告" />
+          </div>
+          <div v-else>
+            <div
+              v-for="item in announcements"
+              :key="item.id"
+              class="announcement-item"
+            >
+              <div class="announcement-header">
+                <div class="announcement-title">
+                  <el-tag v-if="item.isTop === 1" type="danger" size="small">置顶</el-tag>
+                  <span>{{ item.title }}</span>
+                </div>
+                <div v-if="isGroupAdmin" class="announcement-ops">
+                  <el-button text :icon="Edit" size="small" @click="openEditAnnouncement(item)" />
+                  <el-button text :icon="Delete" size="small" type="danger" @click="handleDeleteAnnouncement(item)" />
+                </div>
+              </div>
+              <div class="announcement-body">
+                <div class="announcement-text">{{ item.content }}</div>
+              </div>
+              <div class="announcement-footer">
+                <span class="announcement-time">{{ formatAnnouncementTime(item.createTime) }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </el-dialog>
+    
+    <!-- 编辑/发布公告弹窗 -->
+    <el-dialog
+      v-model="showEditAnnouncement"
+      :title="editingAnnouncement ? '编辑公告' : '发布公告'"
+      width="450px"
+      destroy-on-close
+    >
+      <el-form :model="announcementForm" label-width="80px">
+        <el-form-item label="标题" required>
+          <el-input v-model="announcementForm.title" placeholder="请输入公告标题" maxlength="50" show-word-limit />
+        </el-form-item>
+        <el-form-item label="内容" required>
+          <el-input
+            v-model="announcementForm.content"
+            type="textarea"
+            :rows="5"
+            placeholder="请输入公告内容"
+            maxlength="500"
+            show-word-limit
+          />
+        </el-form-item>
+        <el-form-item label="置顶">
+          <el-switch v-model="announcementForm.isTop" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showEditAnnouncement = false">取消</el-button>
+        <el-button type="primary" @click="submitAnnouncement">
+          {{ editingAnnouncement ? '保存' : '发布' }}
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -446,10 +530,13 @@ import {
   Bottom,
   Delete,
   Hide,
-  BellFilled
+  BellFilled,
+  Bell,
+  Edit
 } from '@element-plus/icons-vue'
 import request from '@/utils/request'
 import { setGroupMuted, getGroupMuted } from '@/api/group'
+import { getAnnouncementList, publishAnnouncement, updateAnnouncement, deleteAnnouncement } from '@/api/announcement'
 import { setFriendMuted, getFriendMuted } from '@/api/friend'
 import { useUserStore } from '@/stores/user'
 import wsClient from '@/utils/websocket'
@@ -479,6 +566,18 @@ const highlightMessageId = ref(null) // 高亮显示的消息ID
 const messageScrollbar = ref(null)
 const hoveredMessageId = ref(null) // 当前悬停的消息ID
 const inputRef = ref(null)
+
+// 群公告相关
+const showAnnouncementDialog = ref(false)
+const announcements = ref([])
+const announcementLoading = ref(false)
+const showEditAnnouncement = ref(false)
+const editingAnnouncement = ref(null)
+const announcementForm = ref({
+  title: '',
+  content: '',
+  isTop: false
+})
 
 // @成员相关
 const showAtPanel = ref(false)
@@ -2250,6 +2349,129 @@ const scrollToMessage = (messageId) => {
   })
 }
 
+// ========== 群公告相关方法 ==========
+
+// 加载群公告列表
+const loadAnnouncements = async () => {
+  if (!selectedConv.value || selectedConv.value.chatType !== 2) return
+  
+  announcementLoading.value = true
+  try {
+    const res = await getAnnouncementList(selectedConv.value.targetId)
+    announcements.value = res.data || []
+  } catch (error) {
+    console.error('加载群公告失败:', error)
+  } finally {
+    announcementLoading.value = false
+  }
+}
+
+// 判断当前用户是否是群主或管理员
+const isGroupAdmin = computed(() => {
+  if (!selectedConv.value || selectedConv.value.chatType !== 2) return false
+  const currentMember = atMembers.value.find(m => m.userId === currentUserId.value)
+  if (!currentMember || currentMember.role == null) return false
+  return currentMember.role === 2 || currentMember.role === 1
+})
+
+// 打开发布公告弹窗
+const openPublishAnnouncement = () => {
+  editingAnnouncement.value = null
+  announcementForm.value = {
+    title: '',
+    content: '',
+    isTop: false
+  }
+  showEditAnnouncement.value = true
+}
+
+// 打开编辑公告弹窗
+const openEditAnnouncement = (announcement) => {
+  editingAnnouncement.value = announcement
+  announcementForm.value = {
+    title: announcement.title,
+    content: announcement.content,
+    isTop: announcement.isTop === 1
+  }
+  showEditAnnouncement.value = true
+}
+
+// 提交公告（发布或更新）
+const submitAnnouncement = async () => {
+  if (!announcementForm.value.title.trim()) {
+    ElMessage.warning('请输入公告标题')
+    return
+  }
+  if (!announcementForm.value.content.trim()) {
+    ElMessage.warning('请输入公告内容')
+    return
+  }
+  
+  try {
+    if (editingAnnouncement.value) {
+      // 更新公告
+      await updateAnnouncement(editingAnnouncement.value.id, announcementForm.value)
+      ElMessage.success('公告更新成功')
+    } else {
+      // 发布公告
+      await publishAnnouncement({
+        groupId: selectedConv.value.targetId,
+        ...announcementForm.value
+      })
+      ElMessage.success('公告发布成功')
+    }
+    
+    showEditAnnouncement.value = false
+    await loadAnnouncements()
+  } catch (error) {
+    console.error('提交公告失败:', error)
+  }
+}
+
+// 删除公告
+const handleDeleteAnnouncement = async (announcement) => {
+  try {
+    await ElMessageBox.confirm('确定要删除这条公告吗？', '确认删除', {
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+    
+    await deleteAnnouncement(announcement.id)
+    ElMessage.success('公告已删除')
+    await loadAnnouncements()
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('删除公告失败:', error)
+    }
+  }
+}
+
+// 格式化公告时间
+const formatAnnouncementTime = (time) => {
+  if (!time) return ''
+  const date = new Date(time)
+  const now = new Date()
+  const diff = now - date
+  
+  if (diff < 60000) return '刚刚'
+  if (diff < 3600000) return Math.floor(diff / 60000) + '分钟前'
+  if (diff < 86400000) return Math.floor(diff / 3600000) + '小时前'
+  
+  return date.toLocaleDateString()
+}
+
+// 监听群公告弹窗打开
+watch(showAnnouncementDialog, (val) => {
+  if (val) {
+    loadAnnouncements()
+    // 确保群成员已加载（用于判断权限）
+    if (atMembers.value.length === 0) {
+      loadGroupMembersForAt()
+    }
+  }
+})
+
 </script>
 
 <style scoped>
@@ -2878,6 +3100,77 @@ const scrollToMessage = (messageId) => {
   margin-top: 16px;
   display: flex;
   justify-content: center;
+}
+
+/* 群公告弹窗样式 */
+.announcement-dialog :deep(.el-dialog__body) {
+  padding-top: 12px;
+}
+
+.announcement-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.announcement-actions {
+  margin-bottom: 8px;
+}
+
+.announcement-actions .el-button {
+  width: 100%;
+}
+
+.announcement-list {
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.announcement-item {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #f5f7fa;
+  margin-bottom: 8px;
+}
+
+.announcement-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.announcement-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #303133;
+}
+
+.announcement-ops .el-button {
+  padding: 0 4px;
+  min-height: auto;
+}
+
+.announcement-body {
+  font-size: 13px;
+  color: #606266;
+  line-height: 1.5;
+  margin: 4px 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.announcement-footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.announcement-time {
+  font-size: 12px;
+  color: #909399;
 }
 
 /* 高亮消息样式 */

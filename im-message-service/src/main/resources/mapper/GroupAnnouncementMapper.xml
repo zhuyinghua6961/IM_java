@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.im.message.mapper.GroupAnnouncementMapper">
+
+    <resultMap id="BaseResultMap" type="com.im.message.entity.GroupAnnouncement">
+        <id column="id" property="id"/>
+        <result column="group_id" property="groupId"/>
+        <result column="publisher_id" property="publisherId"/>
+        <result column="title" property="title"/>
+        <result column="content" property="content"/>
+        <result column="is_top" property="isTop"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, group_id, publisher_id, title, content, is_top, create_time, update_time
+    </sql>
+
+    <!-- 插入群公告 -->
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO group_announcement (group_id, publisher_id, title, content, is_top, create_time, update_time)
+        VALUES (#{groupId}, #{publisherId}, #{title}, #{content}, #{isTop}, #{createTime}, #{updateTime})
+    </insert>
+
+    <!-- 更新群公告 -->
+    <update id="update">
+        UPDATE group_announcement
+        SET title = #{title},
+            content = #{content},
+            is_top = #{isTop},
+            update_time = #{updateTime}
+        WHERE id = #{id}
+    </update>
+
+    <!-- 删除群公告 -->
+    <delete id="deleteById">
+        DELETE FROM group_announcement WHERE id = #{id}
+    </delete>
+
+    <!-- 根据ID查询 -->
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM group_announcement
+        WHERE id = #{id}
+    </select>
+
+    <!-- 查询群的所有公告（置顶优先，按时间倒序） -->
+    <select id="selectByGroupId" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM group_announcement
+        WHERE group_id = #{groupId}
+        ORDER BY is_top DESC, create_time DESC
+    </select>
+
+    <!-- 查询群的最新公告 -->
+    <select id="selectLatestByGroupId" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM group_announcement
+        WHERE group_id = #{groupId}
+        ORDER BY is_top DESC, create_time DESC
+        LIMIT 1
+    </select>
+
+    <!-- 取消群内其他公告的置顶 -->
+    <update id="cancelTopByGroupId">
+        UPDATE group_announcement
+        SET is_top = 0
+        WHERE group_id = #{groupId}
+        <if test="excludeId != null">
+            AND id != #{excludeId}
+        </if>
+    </update>
+
+</mapper>

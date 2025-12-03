@@ -746,6 +746,73 @@ Content-Type: application/json
 
 ---
 
+### 4.17 群公告管理 ✅
+
+**接口前缀**: `im-message-service`
+
+群公告相关接口由消息服务 `im-message-service` 提供，用于群内公告的发布和展示。
+
+#### 4.17.1 发布群公告
+
+**接口地址**: `POST /api/message/announcement`
+
+**权限**: 群主、管理员
+
+**请求参数**:
+```json
+{
+  "groupId": 1,
+  "title": "群公告标题",
+  "content": "群公告内容",
+  "isTop": true   // 是否置顶，true/false，支持多条同时置顶
+}
+```
+
+**响应数据**:
+```json
+{
+  "code": 200,
+  "data": 1001   // 公告ID
+}
+```
+
+#### 4.17.2 更新群公告
+
+**接口地址**: `PUT /api/message/announcement/{id}`
+
+**权限**: 群主、管理员
+
+**请求参数**:
+```json
+{
+  "title": "新的公告标题",
+  "content": "新的公告内容",
+  "isTop": true
+}
+```
+
+#### 4.17.3 删除群公告
+
+**接口地址**: `DELETE /api/message/announcement/{id}`
+
+**权限**: 群主、管理员
+
+#### 4.17.4 获取群公告列表
+
+**接口地址**: `GET /api/message/announcement/list/{groupId}`
+
+**说明**:
+- 返回该群的所有公告，已置顶公告优先，其次按创建时间倒序。
+
+#### 4.17.5 获取最新群公告
+
+**接口地址**: `GET /api/message/announcement/latest/{groupId}`
+
+**说明**:
+- 返回该群当前最新的一条公告（优先返回置顶公告）。
+
+---
+
 ## 5. 消息服务 API (im-message-service)
 
 ### 5.1 WebSocket 连接 ✅
@@ -906,18 +973,91 @@ Content-Type: application/json
 
 ---
 
-### 5.7 消息搜索 🚧
+### 5.7 消息搜索 ✅
 
 **接口地址**: `GET /api/message/search`
 
 **请求参数**:
-- `keyword`: 搜索关键词
-- `chatType`: 聊天类型（可选）
-- `targetId`: 对方ID（可选）
-- `startTime`: 开始时间（可选）
-- `endTime`: 结束时间（可选）
+- `keyword` *(必填)*: 搜索关键词，按消息内容模糊匹配
+- `chatType` *(可选)*: 聊天类型，1-单聊 2-群聊；不传则在所有会话中搜索
+- `targetId` *(可选)*: 对方ID（用户ID或群ID），与 `chatType` 组合限定搜索范围
+- `page` *(可选)*: 页码，默认 1
+- `size` *(可选)*: 每页大小，默认 20
 
-**说明**: 待实现功能
+**响应数据**:
+```json
+{
+  "code": 200,
+  "data": {
+    "total": 123,
+    "page": 1,
+    "size": 20,
+    "list": [
+      {
+        "id": "187654321987654321",   // 消息ID，字符串，避免前端精度丢失
+        "fromUserId": "5",
+        "toId": "6",
+        "chatType": 1,
+        "msgType": 1,
+        "content": "搜索结果中的消息内容",
+        "sendTime": "2025-12-03 20:00:00"
+      }
+    ]
+  }
+}
+```
+
+**说明**:
+- 仅返回当前登录用户有权限看到的消息
+- `id` / `fromUserId` / `toId` 为字符串类型，前端请按字符串处理以避免 Snowflake ID 精度丢失
+- 搜索结果可结合「消息上下文」接口实现精确跳转和高亮
+
+---
+
+### 5.8 获取消息上下文 ✅
+
+**接口地址**: `GET /api/message/context`
+
+**请求参数**:
+- `messageId` *(必填)*: 目标消息ID（Long 类型）
+- `contextSize` *(可选)*: 上下文消息数量，默认 50（表示返回目标消息附近的一段消息）
+
+**响应数据**:
+```json
+{
+  "code": 200,
+  "data": {
+    "messageId": 187654321987654321,
+    "chatType": 1,
+    "targetId": 6,
+    "list": [
+      {
+        "id": 187654321987654320,
+        "fromUserId": 5,
+        "toId": 6,
+        "chatType": 1,
+        "msgType": 1,
+        "content": "前一条消息",
+        "sendTime": "2025-12-03 19:59:58"
+      },
+      {
+        "id": 187654321987654321,
+        "fromUserId": 5,
+        "toId": 6,
+        "chatType": 1,
+        "msgType": 1,
+        "content": "命中的目标消息",
+        "sendTime": "2025-12-03 20:00:00"
+      }
+    ]
+  }
+}
+```
+
+**说明**:
+- 根据 `messageId` 推导会话信息，返回该消息附近的一段上下文消息列表
+- 后端会自动将上下文消息写入 Redis 缓存，以提升后续滚动加载性能
+- 返回的 `list` 按时间倒序排列（最新消息在最前）
 
 ---
 
