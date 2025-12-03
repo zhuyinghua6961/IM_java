@@ -184,7 +184,7 @@
                     </a>
                   </template>
                   <template v-else>
-                    {{ msg.content }}
+                    <span v-html="formatMessageContent(msg.content)"></span>
                   </template>
                   <!-- 悬停操作菜单 -->
                   <div 
@@ -295,15 +295,47 @@
             {{ isRecording ? '停止语音' : '语音' }}
           </el-button>
         </div>
-        <div class="input-box">
+        <div class="input-box" style="position: relative;">
           <el-input
+            ref="inputRef"
             v-model="inputMessage"
             type="textarea"
             :rows="4"
             resize="none"
-            placeholder="按 Enter 发送，Shift + Enter 换行"
+            placeholder="按 Enter 发送，Shift + Enter 换行，输入 @ 可提及成员"
             @keydown.enter="handleKeyDown"
+            @input="handleInputChange"
           />
+          <!-- @成员选择弹窗 -->
+          <div v-if="showAtPanel && selectedConv?.chatType === 2" class="at-panel">
+            <div class="at-panel-header">
+              <span>选择要@的成员</span>
+              <el-button text size="small" @click="showAtPanel = false">关闭</el-button>
+            </div>
+            <div class="at-panel-search">
+              <el-input v-model="atSearchKeyword" placeholder="搜索成员" size="small" clearable />
+            </div>
+            <div class="at-panel-list">
+              <div 
+                class="at-item at-all" 
+                @click="selectAtMember({ userId: 'all', nickname: '全体成员' })"
+              >
+                <el-avatar :size="28">全</el-avatar>
+                <span>@全体成员</span>
+              </div>
+              <div 
+                v-for="member in filteredAtMembers" 
+                :key="member.userId" 
+                class="at-item"
+                @click="selectAtMember(member)"
+              >
+                <el-avatar :size="28" :src="member.avatar">
+                  {{ (member.groupNickname || member.nickname || member.username)?.charAt(0) }}
+                </el-avatar>
+                <span>{{ member.groupNickname || member.nickname || member.username }}</span>
+              </div>
+            </div>
+          </div>
         </div>
         <div class="input-actions">
           <span class="text-count">{{ inputMessage.length }}/2000</span>
@@ -363,6 +395,13 @@ const inputMessage = ref('')
 const messages = ref([])
 const messageScrollbar = ref(null)
 const hoveredMessageId = ref(null) // 当前悬停的消息ID
+const inputRef = ref(null)
+
+// @成员相关
+const showAtPanel = ref(false)
+const atSearchKeyword = ref('')
+const atMembers = ref([]) // 当前群的成员列表
+const atUserMap = ref({}) // 存储被@的用户 {userId: nickname}
 const isRecording = ref(false)
 const playingMessageId = ref(null)
 const playingCurrentTime = ref(0)
@@ -402,6 +441,17 @@ const conversations = computed(() => {
 const currentUserId = computed(() => userStore.userInfo?.userId || null)
 const totalUnread = computed(() => {
   return conversations.value.reduce((sum, conv) => sum + (conv.unreadCount || 0), 0)
+})
+
+// 过滤@成员列表（排除自己）
+const filteredAtMembers = computed(() => {
+  const keyword = atSearchKeyword.value.toLowerCase()
+  return atMembers.value.filter(member => {
+    if (member.userId === currentUserId.value) return false
+    if (!keyword) return true
+    const name = (member.groupNickname || member.nickname || member.username || '').toLowerCase()
+    return name.includes(keyword)
+  })
 })
 
 // 组件挂载时检查URL参数
@@ -789,6 +839,11 @@ const sendMessage = () => {
   } else if (selectedConv.value.chatType === 2) {
     // 群聊
     messageData.groupId = selectedConv.value.targetId
+    // 解析@用户
+    const atUserIds = parseAtUsers(messageData.content)
+    if (atUserIds) {
+      messageData.atUserIds = atUserIds
+    }
   }
   
   // 生成临时ID
@@ -807,8 +862,9 @@ const sendMessage = () => {
   
   messages.value.push(tempMessage)
   
-  // 清空输入框
+  // 清空输入框和@记录
   inputMessage.value = ''
+  atUserMap.value = {}
   
   // 检查WebSocket连接状态
   console.log('WebSocket连接状态:', wsClient.isConnected())
@@ -1457,8 +1513,100 @@ const playVoice = (message) => {
   }
 }
 
+// 处理输入变化，检测@符号
+const handleInputChange = (value) => {
+  // 只在群聊中处理@
+  if (selectedConv.value?.chatType !== 2) return
+  
+  // 检测是否刚输入了@
+  if (value.endsWith('@')) {
+    showAtPanel.value = true
+    atSearchKeyword.value = ''
+    loadGroupMembersForAt()
+  }
+}
+
+// 加载群成员用于@选择
+const loadGroupMembersForAt = async () => {
+  if (!selectedConv.value || selectedConv.value.chatType !== 2) return
+  
+  try {
+    const res = await request.get(`/group/${selectedConv.value.targetId}/members`)
+    atMembers.value = res.data || []
+  } catch (error) {
+    console.error('加载群成员失败:', error)
+  }
+}
+
+// 选择@的成员
+const selectAtMember = (member) => {
+  const nickname = member.groupNickname || member.nickname || member.username || ''
+  const userId = member.userId
+  
+  // 删除最后一个@符号，插入@昵称
+  if (inputMessage.value.endsWith('@')) {
+    inputMessage.value = inputMessage.value.slice(0, -1) + `@${nickname} `
+  } else {
+    inputMessage.value += `@${nickname} `
+  }
+  
+  // 记录被@的用户
+  atUserMap.value[userId] = nickname
+  
+  showAtPanel.value = false
+  atSearchKeyword.value = ''
+  
+  // 聚焦输入框
+  nextTick(() => {
+    inputRef.value?.focus()
+  })
+}
+
+// 解析消息中的@用户，返回atUserIds
+const parseAtUsers = (content) => {
+  const atUserIds = []
+  
+  // 检查是否有@全体成员
+  if (content.includes('@全体成员')) {
+    return 'all'
+  }
+  
+  // 遍历已记录的@用户，检查内容中是否包含
+  for (const [userId, nickname] of Object.entries(atUserMap.value)) {
+    if (content.includes(`@${nickname}`)) {
+      if (userId !== 'all') {
+        atUserIds.push(userId)
+      }
+    }
+  }
+  
+  return atUserIds.length > 0 ? atUserIds.join(',') : null
+}
+
+// 格式化消息内容，高亮@内容
+const formatMessageContent = (content) => {
+  if (!content) return ''
+  
+  // 转义HTML特殊字符
+  let escaped = content
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+  
+  // 高亮@内容（@xxx 格式）
+  escaped = escaped.replace(/@([^\s@]+)/g, '<span class="at-highlight">@$1</span>')
+  
+  return escaped
+}
+
 // 处理键盘事件
 const handleKeyDown = (e) => {
+  // ESC关闭@面板
+  if (e.key === 'Escape' && showAtPanel.value) {
+    showAtPanel.value = false
+    return
+  }
+  
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault()
     sendMessage()
@@ -2227,6 +2375,71 @@ const scrollToBottom = () => {
 
 .input-box :deep(.el-textarea__inner):focus {
   border-color: #409eff;
+}
+
+/* @成员选择面板 */
+.at-panel {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.1);
+  max-height: 300px;
+  z-index: 100;
+  margin-bottom: 8px;
+}
+
+.at-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  border-bottom: 1px solid #f0f0f0;
+  font-size: 14px;
+  font-weight: 500;
+  color: #303133;
+}
+
+.at-panel-search {
+  padding: 8px 12px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.at-panel-list {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.at-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.at-item:hover {
+  background: #f5f7fa;
+}
+
+.at-item.at-all {
+  border-bottom: 1px solid #f0f0f0;
+  color: #409eff;
+  font-weight: 500;
+}
+
+.at-item span {
+  font-size: 14px;
+}
+
+/* @高亮样式 */
+.at-highlight {
+  color: #409eff;
+  font-weight: 500;
 }
 
 .input-actions {

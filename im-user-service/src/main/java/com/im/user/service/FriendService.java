@@ -66,4 +66,12 @@ public interface FriendService {
      * @return 是否被拉黑
      */
     boolean isBlocked(Long targetUserId);
+    
+    /**
+     * 内部检查：指定用户是否拉黑了目标用户（单向）
+     * @param blockerId 拉黑方用户ID
+     * @param blockedId 被拉黑方用户ID
+     * @return 是否被拉黑
+     */
+    boolean checkBlockedInternal(Long blockerId, Long blockedId);
 }

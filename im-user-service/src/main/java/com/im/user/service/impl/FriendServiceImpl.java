@@ -422,4 +422,20 @@ public class FriendServiceImpl implements FriendService {
         Blacklist blocked = blacklistMapper.checkBlocked(userId, targetUserId);
         return blocked != null;
     }
+    
+    @Override
+    public boolean checkBlockedInternal(Long blockerId, Long blockedId) {
+        log.info("=== 内部黑名单检查: blockerId={}, blockedId={} ===", blockerId, blockedId);
+        
+        if (blockerId == null || blockedId == null) {
+            log.warn("=== 参数为空，返回false ===");
+            return false;
+        }
+        
+        // 单向检查：blockerId 是否拉黑了 blockedId
+        Blacklist blocked = blacklistMapper.selectByUserIdAndBlockedUserId(blockerId, blockedId);
+        boolean result = blocked != null && blocked.getStatus() == 1;
+        log.info("=== 黑名单记录: {}, 结果: {} ===", blocked, result);
+        return result;
+    }
 }

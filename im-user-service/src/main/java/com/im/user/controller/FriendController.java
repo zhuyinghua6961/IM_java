@@ -121,4 +121,15 @@ public class FriendController {
         boolean blocked = friendService.isBlocked(targetUserId);
         return Result.success(blocked);
     }
+    
+    /**
+     * 内部API：检查用户A是否拉黑了用户B（供消息服务调用）
+     */
+    @GetMapping("/internal/check-blocked")
+    public Result<Boolean> checkBlocked(
+            @org.springframework.web.bind.annotation.RequestParam("blockerId") Long blockerId,
+            @org.springframework.web.bind.annotation.RequestParam("blockedId") Long blockedId) {
+        boolean blocked = friendService.checkBlockedInternal(blockerId, blockedId);
+        return Result.success(blocked);
+    }
 }

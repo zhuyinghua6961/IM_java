@@ -19,4 +19,5 @@ public class Message {
     private LocalDateTime sendTime;
     private LocalDateTime recallTime;
     private String persistStatus; // 持久化状态：PENDING-待持久化, PERSISTED-已持久化
+    private String atUserIds; // 被@的用户ID列表，逗号分隔，"all"表示@全体成员
 }

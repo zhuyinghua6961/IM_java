@@ -4,8 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.im.common.context.UserContext;
 import com.im.message.dto.MessageDTO;
 import com.im.message.entity.GroupMember;
-import com.im.message.mapper.BlacklistMapper;
 import com.im.message.mapper.GroupMemberMapper;
+import com.im.message.service.BlacklistCheckService;
 import com.im.message.service.MessageService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -16,8 +16,10 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Controller;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * WebSocket 消息处理器
@@ -39,7 +41,7 @@ public class WebSocketMessageHandler {
     private GroupMemberMapper groupMemberMapper;
     
     @Autowired
-    private BlacklistMapper blacklistMapper;
+    private BlacklistCheckService blacklistCheckService;
     
     /**
      * 处理客户端发送的消息
@@ -66,18 +68,33 @@ public class WebSocketMessageHandler {
             // 3. 解析消息内容
             MessageDTO messageDTO = objectMapper.convertValue(payload, MessageDTO.class);
             
-            // 4. 单聊时检查黑名单
+            // 4. 单聊时检查黑名单（双向检查）
             if (messageDTO.getChatType() == 1) {
-                int blocked = blacklistMapper.isBlockedBy(messageDTO.getToUserId(), fromUserId);
-                if (blocked > 0) {
+                // 检查1：接收者是否拉黑了发送者
+                boolean blockedByReceiver = blacklistCheckService.isBlockedBy(messageDTO.getToUserId(), fromUserId);
+                if (blockedByReceiver) {
                     log.warn("消息被拦截：发送者 {} 已被接收者 {} 拉黑", fromUserId, messageDTO.getToUserId());
                     
                     // 保存失败消息到数据库（状态码 -1 表示被拉黑）
                     Long messageId = messageService.saveFailedMessage(fromUserId, messageDTO, -1);
                     log.info("被拉黑消息已保存，messageId: {}", messageId);
                     
-                    // 发送被拉黑通知给发送方（包含消息ID）
-                    sendBlockedMessage(headerAccessor.getSessionId(), messageDTO.getToUserId(), messageId);
+                    // 发送被拉黑通知给发送方
+                    sendBlockedMessage(headerAccessor.getSessionId(), messageDTO.getToUserId(), messageId, "对方已将你拉黑，无法发送消息");
+                    return;
+                }
+                
+                // 检查2：发送者是否拉黑了接收者
+                boolean blockedBySender = blacklistCheckService.isBlockedBy(fromUserId, messageDTO.getToUserId());
+                if (blockedBySender) {
+                    log.warn("消息被拦截：发送者 {} 已拉黑接收者 {}", fromUserId, messageDTO.getToUserId());
+                    
+                    // 保存失败消息到数据库（状态码 -1 表示被拉黑）
+                    Long messageId = messageService.saveFailedMessage(fromUserId, messageDTO, -1);
+                    log.info("拉黑对方后发消息已保存，messageId: {}", messageId);
+                    
+                    // 发送提示给发送方
+                    sendBlockedMessage(headerAccessor.getSessionId(), messageDTO.getToUserId(), messageId, "你已将对方拉黑，无法发送消息");
                     return;
                 }
             }
@@ -154,18 +171,19 @@ public class WebSocketMessageHandler {
      * @param sessionId WebSocket session ID
      * @param blockedByUserId 拉黑者的用户ID
      * @param messageId 消息ID（已保存到数据库）
+     * @param message 提示消息
      */
-    private void sendBlockedMessage(String sessionId, Long blockedByUserId, Long messageId) {
+    private void sendBlockedMessage(String sessionId, Long blockedByUserId, Long messageId, String message) {
         Map<String, Object> blocked = new HashMap<>();
         blocked.put("type", "BLOCKED");
         blocked.put("blockedByUserId", blockedByUserId);
         blocked.put("messageId", String.valueOf(messageId));
-        blocked.put("message", "对方已将你拉黑，无法发送消息");
+        blocked.put("message", message);
         blocked.put("timestamp", System.currentTimeMillis());
         
         String destination = "/queue/error-" + sessionId;
         messagingTemplate.convertAndSend(destination, blocked);
-        log.info("发送拉黑提示到: {}, blockedByUserId={}, messageId={}", destination, blockedByUserId, messageId);
+        log.info("发送拉黑提示到: {}, message={}, messageId={}", destination, message, messageId);
     }
     
     /**
@@ -198,17 +216,20 @@ public class WebSocketMessageHandler {
      * 推送给所有群成员（除了发送者）
      */
     private void pushMessageToGroup(Long groupId, Long messageId, Long fromUserId, MessageDTO messageDTO) {
-        Map<String, Object> message = new HashMap<>();
-        message.put("type", "MESSAGE");
-        // 使用字符串形式的 messageId
-        message.put("messageId", String.valueOf(messageId));
-        message.put("fromUserId", fromUserId);
-        message.put("groupId", groupId);
-        message.put("chatType", messageDTO.getChatType());
-        message.put("msgType", messageDTO.getMsgType());
-        message.put("content", messageDTO.getContent());
-        message.put("url", messageDTO.getUrl());
-        message.put("timestamp", System.currentTimeMillis());
+        String atUserIds = messageDTO.getAtUserIds();
+        boolean isAtAll = "all".equals(atUserIds);
+        Set<Long> atUserIdSet = new HashSet<>();
+        
+        // 解析被@的用户ID
+        if (atUserIds != null && !atUserIds.isEmpty() && !isAtAll) {
+            for (String id : atUserIds.split(",")) {
+                try {
+                    atUserIdSet.add(Long.parseLong(id.trim()));
+                } catch (NumberFormatException e) {
+                    // 忽略无效ID
+                }
+            }
+        }
         
         try {
             // 查询所有群成员
@@ -218,6 +239,22 @@ public class WebSocketMessageHandler {
             // 逐个推送给群成员（排除发送者）
             for (GroupMember member : members) {
                 if (!member.getUserId().equals(fromUserId)) {
+                    Map<String, Object> message = new HashMap<>();
+                    message.put("type", "MESSAGE");
+                    message.put("messageId", String.valueOf(messageId));
+                    message.put("fromUserId", fromUserId);
+                    message.put("groupId", groupId);
+                    message.put("chatType", messageDTO.getChatType());
+                    message.put("msgType", messageDTO.getMsgType());
+                    message.put("content", messageDTO.getContent());
+                    message.put("url", messageDTO.getUrl());
+                    message.put("atUserIds", atUserIds);
+                    message.put("timestamp", System.currentTimeMillis());
+                    
+                    // 标记该用户是否被@
+                    boolean isAtMe = isAtAll || atUserIdSet.contains(member.getUserId());
+                    message.put("isAtMe", isAtMe);
+                    
                     messagingTemplate.convertAndSendToUser(
                         member.getUserId().toString(),
                         "/queue/messages",
@@ -227,11 +264,20 @@ public class WebSocketMessageHandler {
                 }
             }
             
-            log.debug("推送群聊消息: groupId={}, messageId={}, 接收者数量={}", groupId, messageId, sentCount);
+            log.debug("推送群聊消息: groupId={}, messageId={}, 接收者数量={}, atUserIds={}", 
+                      groupId, messageId, sentCount, atUserIds);
         } catch (Exception e) {
             log.error("推送群聊消息失败: groupId={}, messageId={}", groupId, messageId, e);
             // 降级：使用广播到群组主题的方式
-            messagingTemplate.convertAndSend("/topic/group-" + groupId, message);
+            Map<String, Object> fallbackMessage = new HashMap<>();
+            fallbackMessage.put("type", "MESSAGE");
+            fallbackMessage.put("messageId", String.valueOf(messageId));
+            fallbackMessage.put("fromUserId", fromUserId);
+            fallbackMessage.put("groupId", groupId);
+            fallbackMessage.put("chatType", messageDTO.getChatType());
+            fallbackMessage.put("content", messageDTO.getContent());
+            fallbackMessage.put("atUserIds", atUserIds);
+            messagingTemplate.convertAndSend("/topic/group-" + groupId, fallbackMessage);
             log.info("使用群组主题广播: groupId={}", groupId);
         }
     }

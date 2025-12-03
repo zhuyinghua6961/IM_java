@@ -15,6 +15,7 @@
         <result column="send_time" property="sendTime"/>
         <result column="recall_time" property="recallTime"/>
         <result column="persist_status" property="persistStatus"/>
+        <result column="at_user_ids" property="atUserIds"/>
     </resultMap>
 
     <!-- 插入消息 -->
@@ -29,7 +30,8 @@
             url,
             status,
             send_time,
-            persist_status
+            persist_status,
+            at_user_ids
         ) VALUES (
             <if test="id != null">#{id},</if>
             #{fromUserId},
@@ -40,7 +42,8 @@
             #{url},
             #{status},
             #{sendTime},
-            #{persistStatus}
+            #{persistStatus},
+            #{atUserIds}
         )
     </insert>
 
@@ -57,6 +60,8 @@
         FROM message m
         LEFT JOIN message_delete md ON m.id = md.message_id AND md.user_id = #{userId}
         WHERE md.id IS NULL
+        <!-- 排除发送失败的消息（status=-1被拉黑），除非是当前用户自己发送的 -->
+        AND (m.status >= 0 OR m.from_user_id = #{userId})
         <choose>
             <when test="chatType == 1">
                 <!-- 单聊：查询双方的消息 -->
@@ -83,6 +88,8 @@
         FROM message m
         LEFT JOIN message_delete md ON m.id = md.message_id AND md.user_id = #{userId}
         WHERE md.id IS NULL
+        <!-- 排除发送失败的消息（status=-1被拉黑），除非是当前用户自己发送的 -->
+        AND (m.status >= 0 OR m.from_user_id = #{userId})
         <choose>
             <when test="chatType == 1">
                 <!-- 单聊：统计双方的消息 -->

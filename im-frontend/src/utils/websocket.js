@@ -111,6 +111,18 @@ class WebSocketClient {
         // 订阅消息
         this.stompClient.subscribe('/user/queue/messages', (message) => {
           const data = JSON.parse(message.body)
+          
+          // 检测是否被@，显示通知
+          if (data.isAtMe && data.chatType === 2) {
+            ElNotification({
+              title: '有人@了你',
+              message: data.content?.substring(0, 50) + (data.content?.length > 50 ? '...' : ''),
+              type: 'info',
+              duration: 5000,
+              position: 'top-right'
+            })
+          }
+          
           onMessageReceived(data)
         })
 

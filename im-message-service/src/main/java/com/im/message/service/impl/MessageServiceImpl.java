@@ -90,6 +90,7 @@ public class MessageServiceImpl implements MessageService {
         message.setMsgType(messageDTO.getMsgType());
         message.setContent(messageDTO.getContent());
         message.setUrl(messageDTO.getUrl());
+        message.setAtUserIds(messageDTO.getAtUserIds()); // 保存@的用户ID
         message.setStatus(1); // 正常状态
         message.setSendTime(LocalDateTime.now());
         

@@ -10,4 +10,5 @@ public class MessageDTO {
     private Integer msgType;    // 消息类型 1-文本 2-图片 3-视频 4-文件 5-语音
     private String content;     // 消息内容
     private String url;         // 媒体文件URL
+    private String atUserIds;   // 被@的用户ID列表，逗号分隔，"all"表示@全体成员
 }
