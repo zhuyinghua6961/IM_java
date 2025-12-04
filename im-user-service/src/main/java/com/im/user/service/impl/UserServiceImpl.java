@@ -1,5 +1,6 @@
 package com.im.user.service.impl;
 
+import com.alibaba.fastjson2.JSON;
 import com.im.common.enums.ResultCode;
 import com.im.common.exception.BusinessException;
 import com.im.common.utils.JwtUtil;
@@ -37,6 +38,7 @@ public class UserServiceImpl implements UserService {
     private SmsCodeService smsCodeService;
     
     private static final String DEFAULT_AVATAR = "https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png";
+    private static final long USER_PROFILE_EXPIRE_MINUTES = 30L;
     
     @Override
     public UserVO register(UserDTO userDTO) {
@@ -83,9 +85,25 @@ public class UserServiceImpl implements UserService {
         
         // 6. 清除验证码
         smsCodeService.clearCode(userDTO.getPhone());
-        
-        // 7. 返回用户信息
-        return convertToVO(user);
+
+        // 7. 返回用户信息并缓存用户资料
+        UserVO vo = convertToVO(user);
+
+        try {
+            String key = "user:profile:" + user.getId();
+            String json = JSON.toJSONString(vo);
+            redisTemplate.opsForValue().set(
+                    key,
+                    json,
+                    USER_PROFILE_EXPIRE_MINUTES,
+                    TimeUnit.MINUTES
+            );
+            log.info("注册后缓存用户资料，userId: {}", user.getId());
+        } catch (Exception e) {
+            log.warn("注册后缓存用户资料失败，userId: {}", user.getId(), e);
+        }
+
+        return vo;
     }
     
     @Override
@@ -120,7 +138,23 @@ public class UserServiceImpl implements UserService {
         // 5. 构造返回对象
         LoginVO loginVO = new LoginVO();
         loginVO.setToken(token);
-        loginVO.setUserInfo(convertToVO(user));
+        UserVO userVO = convertToVO(user);
+        loginVO.setUserInfo(userVO);
+
+        // 6. 缓存用户资料
+        try {
+            String key = "user:profile:" + user.getId();
+            String json = JSON.toJSONString(userVO);
+            redisTemplate.opsForValue().set(
+                    key,
+                    json,
+                    USER_PROFILE_EXPIRE_MINUTES,
+                    TimeUnit.MINUTES
+            );
+            log.info("登录后缓存用户资料，userId: {}", user.getId());
+        } catch (Exception e) {
+            log.warn("登录后缓存用户资料失败，userId: {}", user.getId(), e);
+        }
         
         log.info("用户登录成功，userId: {}", user.getId());
         return loginVO;
@@ -209,13 +243,40 @@ public class UserServiceImpl implements UserService {
     @Override
     public UserVO getUserById(Long id) {
         log.info("查询用户信息，userId: {}", id);
-        
+        String key = "user:profile:" + id;
+        try {
+            String cache = redisTemplate.opsForValue().get(key);
+            if (cache != null && !cache.isEmpty()) {
+                UserVO vo = JSON.parseObject(cache, UserVO.class);
+                redisTemplate.expire(key, USER_PROFILE_EXPIRE_MINUTES, TimeUnit.MINUTES);
+                log.info("命中用户资料缓存，userId: {}", id);
+                return vo;
+            }
+        } catch (Exception e) {
+            log.warn("读取或解析用户资料缓存失败，降级为数据库查询，userId: {}", id, e);
+        }
+
         User user = userMapper.selectById(id);
         if (user == null) {
             throw new BusinessException(ResultCode.USER_NOT_EXIST);
         }
-        
-        return convertToVO(user);
+
+        UserVO vo = convertToVO(user);
+
+        try {
+            String json = JSON.toJSONString(vo);
+            redisTemplate.opsForValue().set(
+                    key,
+                    json,
+                    USER_PROFILE_EXPIRE_MINUTES,
+                    TimeUnit.MINUTES
+            );
+            log.info("缓存用户资料，userId: {}", id);
+        } catch (Exception e) {
+            log.warn("写入用户资料缓存失败，userId: {}", id, e);
+        }
+
+        return vo;
     }
     
     @Override
@@ -232,6 +293,14 @@ public class UserServiceImpl implements UserService {
         userDTO.setId(userId);
         userMapper.update(userDTO);
         log.info("用户信息更新成功");
+
+        // 清理用户资料缓存
+        try {
+            String key = "user:profile:" + userId;
+            redisTemplate.delete(key);
+        } catch (Exception e) {
+            log.warn("清理用户资料缓存失败, userId={}", userId, e);
+        }
     }
     
     @Override

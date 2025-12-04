@@ -404,6 +404,15 @@ public class FriendServiceImpl implements FriendService {
         }
         
         log.info("拉黑用户成功，userId: {}, targetUserId: {}", userId, targetUserId);
+
+        // 更新黑名单缓存
+        try {
+            String key = RedisConstant.getBlacklistSetKey(userId);
+            redisTemplate.opsForSet().add(key, String.valueOf(targetUserId));
+            redisTemplate.expire(key, RedisConstant.FRIEND_GROUP_LIST_EXPIRE_MINUTES, TimeUnit.MINUTES);
+        } catch (Exception e) {
+            log.warn("更新黑名单缓存失败, userId={}, targetUserId={}", userId, targetUserId, e);
+        }
     }
     
     @Override
@@ -428,8 +437,16 @@ public class FriendServiceImpl implements FriendService {
         
         // 更新状态为已解除
         blacklistMapper.updateStatus(existing.getId(), 0);
-        
+
         log.info("取消拉黑成功，userId: {}, targetUserId: {}", userId, targetUserId);
+
+        // 更新黑名单缓存
+        try {
+            String key = RedisConstant.getBlacklistSetKey(userId);
+            redisTemplate.opsForSet().remove(key, String.valueOf(targetUserId));
+        } catch (Exception e) {
+            log.warn("更新黑名单缓存失败(取消拉黑), userId={}, targetUserId={}", userId, targetUserId, e);
+        }
     }
     
     @Override
@@ -488,11 +505,54 @@ public class FriendServiceImpl implements FriendService {
             log.warn("=== 参数为空，返回false ===");
             return false;
         }
-        
-        // 单向检查：blockerId 是否拉黑了 blockedId
+
+        String key = RedisConstant.getBlacklistSetKey(blockerId);
+
+        // 1. 优先从缓存判断
+        try {
+            Boolean keyExists = redisTemplate.hasKey(key);
+            if (Boolean.TRUE.equals(keyExists)) {
+                Boolean isMember = redisTemplate.opsForSet().isMember(key, String.valueOf(blockedId));
+                if (Boolean.TRUE.equals(isMember)) {
+                    log.info("=== 黑名单缓存命中: blockerId={}, blockedId={}, blocked=true ===", blockerId, blockedId);
+                    return true;
+                }
+                if (Boolean.FALSE.equals(isMember)) {
+                    log.info("=== 黑名单缓存命中: blockerId={}, blockedId={}, blocked=false ===", blockerId, blockedId);
+                    return false;
+                }
+            }
+        } catch (Exception e) {
+            log.warn("=== 读取黑名单缓存失败，降级数据库查询: blockerId={}, blockedId={} ===", blockerId, blockedId, e);
+        }
+
+        // 2. 缓存未命中，查询数据库
         Blacklist blocked = blacklistMapper.selectByUserIdAndBlockedUserId(blockerId, blockedId);
         boolean result = blocked != null && blocked.getStatus() == 1;
         log.info("=== 黑名单记录: {}, 结果: {} ===", blocked, result);
+
+        // 3. 回写或初始化缓存
+        try {
+            Boolean keyExists = redisTemplate.hasKey(key);
+            if (!Boolean.TRUE.equals(keyExists)) {
+                // 初始化该用户的黑名单集合
+                List<Blacklist> list = blacklistMapper.selectByUserId(blockerId);
+                if (list != null && !list.isEmpty()) {
+                    for (Blacklist item : list) {
+                        if (item.getStatus() != null && item.getStatus() == 1) {
+                            redisTemplate.opsForSet().add(key, String.valueOf(item.getBlockedUserId()));
+                        }
+                    }
+                    redisTemplate.expire(key, RedisConstant.FRIEND_GROUP_LIST_EXPIRE_MINUTES, TimeUnit.MINUTES);
+                }
+            } else if (result) {
+                // 已有集合，只在被拉黑时补充一条
+                redisTemplate.opsForSet().add(key, String.valueOf(blockedId));
+            }
+        } catch (Exception e) {
+            log.warn("=== 刷新黑名单缓存失败: blockerId={}, blockedId={} ===", blockerId, blockedId, e);
+        }
+
         return result;
     }
     

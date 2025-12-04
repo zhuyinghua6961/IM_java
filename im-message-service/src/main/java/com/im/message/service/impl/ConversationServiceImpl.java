@@ -1,5 +1,6 @@
 package com.im.message.service.impl;
 
+import com.alibaba.fastjson2.JSON;
 import com.im.common.exception.BusinessException;
 import com.im.common.enums.ResultCode;
 import com.im.message.entity.Conversation;
@@ -8,11 +9,14 @@ import com.im.message.service.ConversationService;
 import com.im.message.vo.ConversationVO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Service
@@ -26,11 +30,32 @@ public class ConversationServiceImpl implements ConversationService {
     
     @Autowired
     private com.im.message.mapper.MessageDeleteMapper messageDeleteMapper;
+
+    @Autowired
+    private StringRedisTemplate redisTemplate;
+
+    @Value("${im.message.cache-expire-minutes:30}")
+    private Integer cacheExpireMinutes;
     
     @Override
     public List<ConversationVO> getConversationList(Long userId) {
         log.debug("获取会话列表，userId: {}", userId);
-        
+        String key = getConversationListKey(userId);
+
+        // 1. 优先从缓存读取
+        try {
+            String cache = redisTemplate.opsForValue().get(key);
+            if (cache != null && !cache.isEmpty()) {
+                List<ConversationVO> cached = JSON.parseArray(cache, ConversationVO.class);
+                redisTemplate.expire(key, cacheExpireMinutes, TimeUnit.MINUTES);
+                log.debug("命中会话列表缓存，userId: {}, count: {}", userId, cached.size());
+                return cached;
+            }
+        } catch (Exception e) {
+            log.warn("读取或解析会话列表缓存失败，降级为数据库查询，userId: {}", userId, e);
+        }
+
+        // 2. 查询数据库
         List<Conversation> conversations = conversationMapper.selectByUserId(userId);
         List<ConversationVO> result = new ArrayList<>();
         
@@ -46,6 +71,20 @@ public class ConversationServiceImpl implements ConversationService {
             vo.setLastMsgTime(conversation.getUpdateTime());
             result.add(vo);
         }
+
+        // 3. 写入缓存
+        try {
+            String json = JSON.toJSONString(result);
+            redisTemplate.opsForValue().set(
+                    key,
+                    json,
+                    cacheExpireMinutes,
+                    TimeUnit.MINUTES
+            );
+            log.debug("缓存会话列表，userId: {}, count: {}", userId, result.size());
+        } catch (Exception e) {
+            log.warn("写入会话列表缓存失败，userId: {}", userId, e);
+        }
         
         log.debug("获取会话列表成功，count: {}", result.size());
         return result;
@@ -60,6 +99,7 @@ public class ConversationServiceImpl implements ConversationService {
         if (conversation != null) {
             conversationMapper.clearUnreadCount(conversation.getId());
             log.debug("清空未读数成功，conversationId: {}", conversation.getId());
+            clearConversationListCache(userId);
         }
     }
     
@@ -75,6 +115,8 @@ public class ConversationServiceImpl implements ConversationService {
         
         conversationMapper.updateTop(conversationId, top ? 1 : 0);
         log.debug("置顶会话成功，conversationId: {}", conversationId);
+
+        clearConversationListCache(conversation.getUserId());
     }
     
     @Override
@@ -112,12 +154,19 @@ public class ConversationServiceImpl implements ConversationService {
             
             log.debug("更新会话成功，conversationId: {}", conversation.getId());
         }
+
+        // 更新或创建会话后，清理会话列表缓存
+        clearConversationListCache(userId);
     }
     
     @Override
     public void hideConversation(Long conversationId) {
         log.debug("隐藏会话，conversationId: {}", conversationId);
-        conversationMapper.hideConversation(conversationId);
+        Conversation conversation = conversationMapper.selectById(conversationId);
+        if (conversation != null) {
+            conversationMapper.hideConversation(conversationId);
+            clearConversationListCache(conversation.getUserId());
+        }
     }
     
     @Override
@@ -129,6 +178,7 @@ public class ConversationServiceImpl implements ConversationService {
         if (conversation != null) {
             conversationMapper.hideConversation(conversation.getId());
             log.debug("隐藏会话成功，conversationId: {}", conversation.getId());
+            clearConversationListCache(userId);
         } else {
             log.warn("未找到要隐藏的会话，userId: {}, targetId: {}, chatType: {}", userId, targetId, chatType);
         }
@@ -138,6 +188,7 @@ public class ConversationServiceImpl implements ConversationService {
     public void showConversation(Long userId, Long targetId, Integer chatType) {
         log.debug("显示会话，userId: {}, targetId: {}, chatType: {}", userId, targetId, chatType);
         conversationMapper.showConversationByUserAndTarget(userId, targetId, chatType);
+        clearConversationListCache(userId);
     }
     
     @Override
@@ -182,6 +233,7 @@ public class ConversationServiceImpl implements ConversationService {
         if (result > 0) {
             log.info("删除会话成功，conversationId: {}, 标记了 {} 条消息", 
                 conversationId, messages.size());
+            clearConversationListCache(userId);
         } else {
             log.warn("删除会话失败，conversationId: {}", conversationId);
             throw new BusinessException(ResultCode.BAD_REQUEST, "删除会话失败");
@@ -218,9 +270,23 @@ public class ConversationServiceImpl implements ConversationService {
             conversationMapper.deleteById(conversation.getId());
             log.info("删除会话成功，conversationId: {}, 标记了 {} 条消息", 
                 conversation.getId(), messages.size());
+
+            clearConversationListCache(userId);
         } else {
             log.warn("未找到要删除的会话，userId: {}, targetId: {}, chatType: {}", userId, targetId, chatType);
             throw new BusinessException(ResultCode.NOT_FOUND, "会话不存在");
+        }
+    }
+
+    private String getConversationListKey(Long userId) {
+        return "conv:list:" + userId;
+    }
+
+    private void clearConversationListCache(Long userId) {
+        try {
+            redisTemplate.delete(getConversationListKey(userId));
+        } catch (Exception e) {
+            log.warn("清理会话列表缓存失败, userId={}", userId, e);
         }
     }
 }

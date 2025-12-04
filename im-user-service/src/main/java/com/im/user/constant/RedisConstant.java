@@ -31,6 +31,21 @@ public class RedisConstant {
     public static final String GROUP_LIST_PREFIX = "user:group:list:";
 
     /**
+     * 黑名单 Set Key 前缀
+     */
+    public static final String BLACKLIST_SET_PREFIX = "user:blacklist:set:";
+
+    /**
+     * 白名单 Set Key 前缀
+     */
+    public static final String WHITELIST_SET_PREFIX = "user:whitelist:set:";
+
+    /**
+     * 群成员列表 Key 前缀
+     */
+    public static final String GROUP_MEMBER_LIST_PREFIX = "group:member:list:";
+
+    /**
      * 好友/群组列表缓存过期时间（分钟）
      */
     public static final long FRIEND_GROUP_LIST_EXPIRE_MINUTES = 30L;
@@ -61,5 +76,26 @@ public class RedisConstant {
      */
     public static String getGroupListKey(Long userId) {
         return GROUP_LIST_PREFIX + userId;
+    }
+
+    /**
+     * 获取黑名单 Set Key
+     */
+    public static String getBlacklistSetKey(Long userId) {
+        return BLACKLIST_SET_PREFIX + userId;
+    }
+
+    /**
+     * 获取白名单 Set Key
+     */
+    public static String getWhitelistSetKey(Long userId) {
+        return WHITELIST_SET_PREFIX + userId;
+    }
+
+    /**
+     * 获取群成员列表缓存 Key
+     */
+    public static String getGroupMemberListKey(Long groupId) {
+        return GROUP_MEMBER_LIST_PREFIX + groupId;
     }
 }

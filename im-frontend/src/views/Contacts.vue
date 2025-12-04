@@ -35,6 +35,10 @@
           <el-icon><Close /></el-icon>
           <span>黑名单</span>
         </el-menu-item>
+        <el-menu-item index="whitelist">
+          <el-icon><Lock /></el-icon>
+          <span>白名单</span>
+        </el-menu-item>
         <el-menu-item index="muted">
           <el-icon><BellFilled /></el-icon>
           <span>免打扰</span>
@@ -779,7 +783,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { MoreFilled, ChatDotRound, Delete, InfoFilled, Close, Message, Plus, User, Bell, UserFilled, Edit, BellFilled } from '@element-plus/icons-vue'
+import { MoreFilled, ChatDotRound, Delete, InfoFilled, Close, Message, Plus, User, Bell, UserFilled, Edit, BellFilled, Lock } from '@element-plus/icons-vue'
 import { getFriendList, addFriend, handleFriendRequest, updateFriendRemark, blockUser, unblockUser, getBlacklist, getMutedFriendList, setFriendMuted } from '@/api/friend'
 import { searchUser } from '@/api/user'
 import { 
@@ -920,6 +924,8 @@ const handleTabSelect = (index) => {
     loadGroupList()
   } else if (index === 'blacklist') {
     loadBlacklist()
+  } else if (index === 'whitelist') {
+    router.push('/whitelist')
   } else if (index === 'muted') {
     loadMutedFriends()
   }

@@ -16,6 +16,7 @@ import com.im.user.mapper.GroupMemberMapper;
 import com.im.user.mapper.UserMapper;
 import com.im.user.mapper.WhitelistMapper;
 import com.im.user.service.GroupService;
+import com.im.user.service.WhitelistService;
 import com.im.user.vo.GroupInvitationVO;
 import com.im.user.vo.GroupMemberVO;
 import com.im.user.vo.GroupVO;
@@ -53,6 +54,9 @@ public class GroupServiceImpl implements GroupService {
     
     @Autowired
     private com.im.user.utils.WebSocketUtil webSocketUtil;
+
+    @Autowired
+    private WhitelistService whitelistService;
 
     @Autowired
     private StringRedisTemplate redisTemplate;
@@ -117,7 +121,7 @@ public class GroupServiceImpl implements GroupService {
             for (Long memberId : uniqueMemberIds) {
                 // 查询该成员是否在我的白名单中（注意：是memberId设置的白名单，允许ownerId拉他）
                 // 逻辑：如果B在A的白名单中，说明B信任A，A可以直接拉B进群
-                boolean isInWhitelist = whitelistMapper.isInWhitelist(memberId, ownerId);
+                boolean isInWhitelist = whitelistService.isInWhitelist(memberId, ownerId);
                 
                 if (isInWhitelist) {
                     // 在白名单中：直接添加
@@ -196,6 +200,9 @@ public class GroupServiceImpl implements GroupService {
         } catch (Exception e) {
             log.warn("清理群组列表缓存失败, ownerId={}", ownerId, e);
         }
+
+        // 清理该群的成员列表缓存
+        clearGroupMemberCache(groupId);
 
         return groupVO;
     }
@@ -350,7 +357,7 @@ public class GroupServiceImpl implements GroupService {
             }
             
             // 4.4 检查白名单关系
-            boolean isInWhitelist = whitelistMapper.isInWhitelist(inviteeId, inviterId);
+            boolean isInWhitelist = whitelistService.isInWhitelist(inviteeId, inviterId);
             log.info("白名单检查结果，invitee: {}, inviter: {}, inWhitelist: {}", inviteeId, inviterId, isInWhitelist);
             
             // 4.5 根据邀请人角色和白名单关系决定处理方式
@@ -444,6 +451,9 @@ public class GroupServiceImpl implements GroupService {
             } catch (Exception e) {
                 log.warn("清理群组列表缓存失败(直接加入成员), groupId={}", groupId, e);
             }
+
+            // 清理该群的成员列表缓存
+            clearGroupMemberCache(groupId);
         }
         
         // 6. 批量插入邀请记录
@@ -566,6 +576,9 @@ public class GroupServiceImpl implements GroupService {
             } catch (Exception e) {
                 log.warn("清理群组列表缓存失败(同意邀请), userId={}, groupId={}", userId, invitation.getGroupId(), e);
             }
+
+            // 清理该群的成员列表缓存
+            clearGroupMemberCache(invitation.getGroupId());
             
             // 通知群主和管理员有新成员加入
             List<GroupMember> admins = groupMemberMapper.selectAdminsByGroupId(invitation.getGroupId());
@@ -740,6 +753,9 @@ public class GroupServiceImpl implements GroupService {
         groupMemberMapper.updateById(member);
 
         log.info("更新群内个人昵称成功，userId: {}, groupId: {}, nickname: {}", userId, groupId, trimmed);
+
+        // 清理该群的成员列表缓存
+        clearGroupMemberCache(groupId);
     }
     
     @Override
@@ -896,11 +912,26 @@ public class GroupServiceImpl implements GroupService {
         if (currentMember == null || currentMember.getStatus() != 1) {
             throw new BusinessException(ResultCode.FORBIDDEN, "您不是该群组成员");
         }
-        
-        // 3. 查询群组成员列表
+
+        String key = RedisConstant.getGroupMemberListKey(groupId);
+
+        // 3. 优先从缓存读取
+        try {
+            String cache = redisTemplate.opsForValue().get(key);
+            if (cache != null && !cache.isEmpty()) {
+                List<GroupMemberVO> cached = JSON.parseArray(cache, GroupMemberVO.class);
+                redisTemplate.expire(key, RedisConstant.FRIEND_GROUP_LIST_EXPIRE_MINUTES, TimeUnit.MINUTES);
+                log.info("命中群成员列表缓存，groupId: {}, size: {}", groupId, cached.size());
+                return cached;
+            }
+        } catch (Exception e) {
+            log.warn("读取或解析群成员列表缓存失败，降级为数据库查询，groupId: {}", groupId, e);
+        }
+
+        // 4. 查询群组成员列表
         List<GroupMember> members = groupMemberMapper.selectByGroupId(groupId);
         
-        // 4. 转换为 VO 并补充用户信息
+        // 5. 转换为 VO 并补充用户信息
         List<GroupMemberVO> result = new ArrayList<>();
         for (GroupMember member : members) {
             User user = userMapper.selectById(member.getUserId());
@@ -915,6 +946,20 @@ public class GroupServiceImpl implements GroupService {
                 vo.setMuteUntil(member.getMuteUntil());
                 result.add(vo);
             }
+        }
+
+        // 6. 写入缓存
+        try {
+            String json = JSON.toJSONString(result);
+            redisTemplate.opsForValue().set(
+                    key,
+                    json,
+                    RedisConstant.FRIEND_GROUP_LIST_EXPIRE_MINUTES,
+                    TimeUnit.MINUTES
+            );
+            log.info("缓存群组成员列表，groupId: {}, size: {}", groupId, result.size());
+        } catch (Exception e) {
+            log.warn("写入群组成员列表缓存失败，groupId: {}", groupId, e);
         }
         
         log.info("获取群组成员列表成功，groupId: {}, memberCount: {}", groupId, result.size());
@@ -1098,6 +1143,9 @@ public class GroupServiceImpl implements GroupService {
             member.setUpdateTime(LocalDateTime.now());
             groupMemberMapper.updateById(member);
         }
+
+        // 清理该群的成员列表缓存
+        clearGroupMemberCache(groupId);
         
         // 7. 通知所有群成员群组已解散
         User ownerUser = userMapper.selectById(ownerId);
@@ -1196,6 +1244,9 @@ public class GroupServiceImpl implements GroupService {
         }
         
         log.info("移除群成员成功，operatorId: {}, userId: {}, groupId: {}", operatorId, userId, groupId);
+
+        // 清理该群的成员列表缓存
+        clearGroupMemberCache(groupId);
     }
     
     @Override
@@ -1353,5 +1404,19 @@ public class GroupServiceImpl implements GroupService {
         String operatorName = operatorUser != null ? operatorUser.getNickname() : "管理员";
         webSocketUtil.pushGroupMuteNotification(userId, operatorId, operatorName,
                 groupId, group.getGroupName(), muteUntil);
+
+        // 清理该群的成员列表缓存
+        clearGroupMemberCache(groupId);
+    }
+
+    /**
+     * 清理群成员列表缓存
+     */
+    private void clearGroupMemberCache(Long groupId) {
+        try {
+            redisTemplate.delete(RedisConstant.getGroupMemberListKey(groupId));
+        } catch (Exception e) {
+            log.warn("清理群成员列表缓存失败, groupId={}", groupId, e);
+        }
     }
 }

@@ -2,6 +2,7 @@ package com.im.user.service.impl;
 
 import com.im.common.enums.ResultCode;
 import com.im.common.exception.BusinessException;
+import com.im.user.constant.RedisConstant;
 import com.im.user.context.UserContext;
 import com.im.user.entity.User;
 import com.im.user.entity.UserWhitelist;
@@ -12,10 +13,12 @@ import com.im.user.service.WhitelistService;
 import com.im.user.vo.WhitelistVO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 白名单服务实现
@@ -32,6 +35,9 @@ public class WhitelistServiceImpl implements WhitelistService {
     
     @Autowired
     private UserMapper userMapper;
+
+    @Autowired
+    private StringRedisTemplate redisTemplate;
     
     @Override
     public void addToWhitelist(Long friendId) {
@@ -53,8 +59,17 @@ public class WhitelistServiceImpl implements WhitelistService {
         whitelist.setUserId(userId);
         whitelist.setFriendId(friendId);
         whitelistMapper.insert(whitelist);
-        
+
         log.info("添加到白名单成功");
+
+        // 更新白名单缓存
+        try {
+            String key = RedisConstant.getWhitelistSetKey(userId);
+            redisTemplate.opsForSet().add(key, String.valueOf(friendId));
+            redisTemplate.expire(key, RedisConstant.FRIEND_GROUP_LIST_EXPIRE_MINUTES, TimeUnit.MINUTES);
+        } catch (Exception e) {
+            log.warn("更新白名单缓存失败, userId={}, friendId={}", userId, friendId, e);
+        }
     }
     
     @Override
@@ -69,6 +84,14 @@ public class WhitelistServiceImpl implements WhitelistService {
         
         whitelistMapper.delete(userId, friendId);
         log.info("从白名单移除成功");
+
+        // 更新白名单缓存
+        try {
+            String key = RedisConstant.getWhitelistSetKey(userId);
+            redisTemplate.opsForSet().remove(key, String.valueOf(friendId));
+        } catch (Exception e) {
+            log.warn("更新白名单缓存失败(移除), userId={}, friendId={}", userId, friendId, e);
+        }
     }
     
     @Override
@@ -99,6 +122,49 @@ public class WhitelistServiceImpl implements WhitelistService {
     
     @Override
     public boolean isInWhitelist(Long userId, Long friendId) {
-        return whitelistMapper.isInWhitelist(userId, friendId);
+        String key = RedisConstant.getWhitelistSetKey(userId);
+
+        // 1. 优先从缓存判断
+        try {
+            Boolean keyExists = redisTemplate.hasKey(key);
+            if (Boolean.TRUE.equals(keyExists)) {
+                Boolean isMember = redisTemplate.opsForSet().isMember(key, String.valueOf(friendId));
+                if (Boolean.TRUE.equals(isMember)) {
+                    log.info("白名单缓存命中: userId={}, friendId={}, inWhitelist=true", userId, friendId);
+                    return true;
+                }
+                if (Boolean.FALSE.equals(isMember)) {
+                    log.info("白名单缓存命中: userId={}, friendId={}, inWhitelist=false", userId, friendId);
+                    return false;
+                }
+            }
+        } catch (Exception e) {
+            log.warn("读取白名单缓存失败，降级数据库查询, userId={}, friendId={}", userId, friendId, e);
+        }
+
+        // 2. 缓存未命中，查询数据库
+        boolean inDb = whitelistMapper.isInWhitelist(userId, friendId);
+
+        // 3. 回写或初始化缓存
+        try {
+            Boolean keyExists = redisTemplate.hasKey(key);
+            if (!Boolean.TRUE.equals(keyExists)) {
+                // 初始化该用户的白名单集合
+                List<Long> friendIds = whitelistMapper.selectWhitelistFriendIds(userId);
+                if (friendIds != null && !friendIds.isEmpty()) {
+                    for (Long id : friendIds) {
+                        redisTemplate.opsForSet().add(key, String.valueOf(id));
+                    }
+                    redisTemplate.expire(key, RedisConstant.FRIEND_GROUP_LIST_EXPIRE_MINUTES, TimeUnit.MINUTES);
+                }
+            } else if (inDb) {
+                // 已有集合，只在确认为白名单时补充一条
+                redisTemplate.opsForSet().add(key, String.valueOf(friendId));
+            }
+        } catch (Exception e) {
+            log.warn("刷新白名单缓存失败, userId={}, friendId={}", userId, friendId, e);
+        }
+
+        return inDb;
     }
 }
