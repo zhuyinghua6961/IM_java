@@ -34,6 +34,15 @@ export function deleteSquarePost(postId) {
   })
 }
 
+// 编辑帖子
+export function updateSquarePost(postId, data) {
+  return request({
+    url: `/square/posts/${postId}`,
+    method: 'put',
+    data
+  })
+}
+
 // 点赞帖子
 export function likeSquarePost(postId) {
   return request({

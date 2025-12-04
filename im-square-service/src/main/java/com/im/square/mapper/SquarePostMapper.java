@@ -15,6 +15,8 @@ public interface SquarePostMapper {
 
     int softDelete(@Param("id") Long id, @Param("userId") Long userId);
 
+    int updatePost(SquarePost post);
+
     int updateCounters(@Param("id") Long id,
                        @Param("likeDelta") int likeDelta,
                        @Param("commentDelta") int commentDelta);

@@ -30,7 +30,14 @@
           </el-avatar>
           <div class="user-info">
             <div class="user-name">{{ post.nickname || `用户 ${post.userId}` }}</div>
-            <div class="post-time">{{ post.createTime }}</div>
+            <div class="post-time">
+              <span v-if="post.updateTime && post.updateTime !== post.createTime">
+                编辑于 {{ formatTime(post.updateTime) }}
+              </span>
+              <span v-else>
+                {{ formatTime(post.createTime) }}
+              </span>
+            </div>
           </div>
           <div class="user-actions" v-if="String(post.userId) !== String(currentUserId)">
             <el-button
@@ -86,6 +93,14 @@
             @click="toggleLike(post)"
           >
             {{ post.liked ? '已赞' : '点赞' }} {{ post.likeCount || 0 }}
+          </el-button>
+          <el-button
+            v-if="String(post.userId) === String(currentUserId)"
+            text
+            type="primary"
+            @click="openEditPost(post)"
+          >
+            编辑
           </el-button>
           <el-button
             v-if="String(post.userId) === String(currentUserId)"
@@ -162,7 +177,7 @@
     </el-scrollbar>
 
     <!-- 发布帖子对话框 -->
-    <el-dialog v-model="showPublishDialog" title="发布帖子" width="500px">
+    <el-dialog v-model="showPublishDialog" :title="isEditingPost ? '编辑帖子' : '发布帖子'" width="500px">
       <el-form :model="publishForm" label-width="60px">
         <el-form-item label="标题">
           <el-input v-model="publishForm.title" maxlength="100" show-word-limit />
@@ -260,17 +275,54 @@
           <div class="comment-header">
             <span class="comment-user">{{ comment.nickname || `用户 ${comment.userId}` }}</span>
             <span class="comment-time">{{ comment.createTime }}</span>
-            <el-button
-              v-if="String(comment.userId) === String(currentUserId)"
-              text
-              type="danger"
-              size="small"
-              @click="handleDeleteComment(comment)"
-            >
-              删除
-            </el-button>
+            <div>
+              <el-button text size="small" @click="startReply(comment)">回复</el-button>
+              <el-button
+                v-if="String(comment.userId) === String(currentUserId)"
+                text
+                type="danger"
+                size="small"
+                @click="handleDeleteComment(comment)"
+              >
+                删除
+              </el-button>
+            </div>
           </div>
           <div class="comment-content">{{ comment.content }}</div>
+
+          <div
+            v-if="comment.replies && comment.replies.length"
+            class="comment-replies"
+          >
+            <div
+              v-for="reply in comment.replies"
+              :key="reply.commentId"
+              class="comment-item comment-item--reply"
+            >
+              <div class="comment-header">
+                <span class="comment-user">
+                  {{ reply.nickname || `用户 ${reply.userId}` }}
+                  <span class="comment-reply-target">
+                    回复 {{ comment.nickname || `用户 ${comment.userId}` }}
+                  </span>
+                </span>
+                <span class="comment-time">{{ reply.createTime }}</span>
+                <div>
+                  <el-button text size="small" @click="startReply(reply)">回复</el-button>
+                  <el-button
+                    v-if="String(reply.userId) === String(currentUserId)"
+                    text
+                    type="danger"
+                    size="small"
+                    @click="handleDeleteComment(reply)"
+                  >
+                    删除
+                  </el-button>
+                </div>
+              </div>
+              <div class="comment-content">{{ reply.content }}</div>
+            </div>
+          </div>
         </div>
         <div v-if="!commentLoading && comments.length === 0" class="empty-comment-tip">
           还没有评论，来抢沙发吧 ~
@@ -283,7 +335,7 @@
         :rows="3"
         maxlength="200"
         show-word-limit
-        placeholder="说点什么..."
+        :placeholder="replyTarget ? `回复 ${replyTarget.nickname || `用户 ${replyTarget.userId}`}` : '说点什么...'"
         class="comment-input"
       />
 
@@ -332,7 +384,8 @@ import {
   markSquareNotificationsReadByIds,
   followSquareUser,
   unfollowSquareUser,
-  getSquarePostDetail
+  getSquarePostDetail,
+  updateSquarePost
 } from '@/api/square'
 
 const userStore = useUserStore()
@@ -352,6 +405,8 @@ const expandedPostId = ref(null)
 
 const showPublishDialog = ref(false)
 const publishing = ref(false)
+const isEditingPost = ref(false)
+const editingPostId = ref(null)
 const publishForm = ref({
   title: '',
   content: '',
@@ -392,6 +447,7 @@ const commentSize = ref(20)
 const commentLoading = ref(false)
 const commentContent = ref('')
 const commentSubmitting = ref(false)
+const replyTarget = ref(null)
 
 // 广场通知
 const notifications = ref([])
@@ -449,6 +505,23 @@ const loadPosts = async (reset = false) => {
   } finally {
     loading.value = false
   }
+}
+
+const openEditPost = (post) => {
+  if (!post) return
+  isEditingPost.value = true
+  editingPostId.value = post.postId
+  publishForm.value = {
+    title: post.title || '',
+    content: post.content || '',
+    visibleType: typeof post.visibleType === 'number' ? post.visibleType : 0,
+    excludeUserIds: Array.isArray(post.excludeUserIds) ? [...post.excludeUserIds] : []
+  }
+  imageUrls.value = Array.isArray(post.images) ? [...post.images] : []
+  videoUrl.value = post.video || ''
+  imageFileList.value = imageUrls.value.map((url, index) => ({ name: `image-${index}`, url }))
+  videoFileList.value = videoUrl.value ? [{ name: 'video', url: videoUrl.value }] : []
+  showPublishDialog.value = true
 }
 
 const openImagePreview = (url) => {
@@ -608,7 +681,7 @@ const handlePublish = async () => {
 
   publishing.value = true
   try {
-    await publishSquarePost({
+    const payload = {
       title: publishForm.value.title || null,
       content: publishForm.value.content,
       images: imageUrls.value,
@@ -616,9 +689,18 @@ const handlePublish = async () => {
       tags: [],
       visibleType: publishForm.value.visibleType,
       excludeUserIds: publishForm.value.excludeUserIds || []
-    })
-    ElMessage.success('发布成功')
+    }
+
+    if (isEditingPost.value && editingPostId.value) {
+      await updateSquarePost(editingPostId.value, payload)
+      ElMessage.success('修改成功')
+    } else {
+      await publishSquarePost(payload)
+      ElMessage.success('发布成功')
+    }
     showPublishDialog.value = false
+    isEditingPost.value = false
+    editingPostId.value = null
     publishForm.value = { title: '', content: '', visibleType: 0, excludeUserIds: [] }
     imageUrls.value = []
     videoUrl.value = ''
@@ -767,6 +849,8 @@ const openComments = async (post) => {
   currentPostId.value = post.postId
   comments.value = []
   commentPage.value = 1
+  replyTarget.value = null
+  commentContent.value = ''
   showCommentDialog.value = true
   await loadComments()
 }
@@ -777,7 +861,26 @@ const loadComments = async () => {
   try {
     const res = await getSquareComments(currentPostId.value, commentPage.value, commentSize.value)
     const data = res.data || {}
-    comments.value = data.records || []
+    const records = data.records || []
+    const map = new Map()
+    records.forEach(r => {
+      map.set(r.commentId, { ...r, replies: [] })
+    })
+    const roots = []
+    records.forEach(r => {
+      const node = map.get(r.commentId)
+      if (r.parentId) {
+        const parent = map.get(r.parentId)
+        if (parent) {
+          parent.replies.push(node)
+        } else {
+          roots.push(node)
+        }
+      } else {
+        roots.push(node)
+      }
+    })
+    comments.value = roots
   } catch (error) {
     console.error('加载评论失败:', error)
   } finally {
@@ -793,12 +896,14 @@ const handleSubmitComment = async () => {
   if (!currentPostId.value) return
   commentSubmitting.value = true
   try {
+    const parentId = replyTarget.value ? replyTarget.value.commentId : null
     await addSquareComment(currentPostId.value, {
       content: commentContent.value,
-      parentId: null
+      parentId
     })
-    ElMessage.success('评论成功')
+    ElMessage.success(parentId ? '回复成功' : '评论成功')
     commentContent.value = ''
+    replyTarget.value = null
     await loadComments()
     // 同步更新列表中的评论数
     const idx = posts.value.findIndex(p => p.postId === currentPostId.value)
@@ -810,6 +915,11 @@ const handleSubmitComment = async () => {
   } finally {
     commentSubmitting.value = false
   }
+}
+
+const startReply = (comment) => {
+  if (!comment) return
+  replyTarget.value = comment
 }
 
 const handleDeletePost = async (post) => {
@@ -1004,6 +1114,26 @@ onMounted(() => {
 
 .comment-content {
   font-size: 14px;
+}
+
+.comment-replies {
+  margin-top: 6px;
+  padding-left: 12px;
+  border-left: 2px solid #f0f0f0;
+}
+
+.comment-item--reply {
+  margin-top: 4px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: #fafafa;
+  border: 1px solid #f0f0f0;
+}
+
+.comment-reply-target {
+  margin-left: 4px;
+  color: #999;
+  font-size: 12px;
 }
 
 .empty-comment-tip {

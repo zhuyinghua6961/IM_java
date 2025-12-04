@@ -116,6 +116,67 @@ public class SquareController {
     }
 
     /**
+     * 编辑帖子
+     */
+    @PutMapping("/posts/{postId}")
+    public Result<Void> updatePost(@PathVariable("postId") Long postId,
+                                   @RequestBody Map<String, Object> params) {
+        Long userId = UserContext.getCurrentUserId();
+        String title = (String) params.get("title");
+        String content = (String) params.get("content");
+        @SuppressWarnings("unchecked")
+        List<String> images = (List<String>) params.get("images");
+        String video = (String) params.get("video");
+        @SuppressWarnings("unchecked")
+        List<String> tags = (List<String>) params.get("tags");
+
+        Integer visibleType = null;
+        Object vtObj = params.get("visibleType");
+        if (vtObj instanceof Number) {
+            visibleType = ((Number) vtObj).intValue();
+        } else if (vtObj instanceof String) {
+            String s = ((String) vtObj).trim();
+            if (!"".equals(s)) {
+                try {
+                    visibleType = Integer.parseInt(s);
+                } catch (NumberFormatException ignored) {
+                }
+            }
+        }
+
+        List<Long> excludeUserIds = null;
+        Object excludeObj = params.get("excludeUserIds");
+        if (excludeObj instanceof List) {
+            @SuppressWarnings("unchecked")
+            List<Object> rawList = (List<Object>) excludeObj;
+            if (!rawList.isEmpty()) {
+                excludeUserIds = new java.util.ArrayList<>();
+                for (Object o : rawList) {
+                    if (o == null) continue;
+                    if (o instanceof Number) {
+                        excludeUserIds.add(((Number) o).longValue());
+                    } else if (o instanceof String) {
+                        String s = ((String) o).trim();
+                        if (!"".equals(s)) {
+                            try {
+                                excludeUserIds.add(Long.parseLong(s));
+                            } catch (NumberFormatException ignored) {
+                            }
+                        }
+                    }
+                }
+                if (excludeUserIds.isEmpty()) {
+                    excludeUserIds = null;
+                }
+            }
+        }
+
+        log.info("编辑广场帖子: userId={}, postId={}, title={}", userId, postId, title);
+        squareService.updatePost(userId, postId, title, content, images, video, tags, visibleType, excludeUserIds);
+        return Result.success();
+    }
+
+    /**
      * 点赞帖子
      */
     @PostMapping("/posts/{postId}/like")

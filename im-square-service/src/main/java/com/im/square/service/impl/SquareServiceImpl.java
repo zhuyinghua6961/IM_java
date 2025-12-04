@@ -227,6 +227,52 @@ public class SquareServiceImpl implements SquareService {
     }
 
     @Override
+    public void updatePost(Long userId,
+                           Long postId,
+                           String title,
+                           String content,
+                           List<String> images,
+                           String video,
+                           List<String> tags,
+                           Integer visibleType,
+                           List<Long> excludeUserIds) {
+        SquarePost post = postMapper.selectById(postId);
+        if (post == null || post.getStatus() == null || post.getStatus() == 0) {
+            throw new BusinessException(ResultCode.SQUARE_POST_NOT_FOUND);
+        }
+        if (!Objects.equals(post.getUserId(), userId)) {
+            throw new BusinessException(ResultCode.NO_PERMISSION, "只能编辑自己发布的帖子");
+        }
+
+        if (content == null || content.trim().isEmpty()) {
+            throw new BusinessException(ResultCode.BAD_REQUEST, "内容不能为空");
+        }
+        contentReviewService.reviewText(content);
+
+        int imageCount = (images == null) ? 0 : images.size();
+        boolean hasVideo = video != null && !video.trim().isEmpty();
+        int totalMedia = imageCount + (hasVideo ? 1 : 0);
+        if (totalMedia > 18) {
+            throw new BusinessException(ResultCode.BAD_REQUEST, "图片和视频总数不能超过 18 个");
+        }
+
+        post.setTitle(title);
+        post.setContent(content);
+        post.setImages(images == null || images.isEmpty() ? null : JSON.toJSONString(images));
+        post.setVideo(video);
+        post.setTags(tags == null || tags.isEmpty() ? null : JSON.toJSONString(tags));
+        post.setVisibleType(visibleType == null ? 0 : visibleType);
+        post.setExcludeUsers(excludeUserIds == null || excludeUserIds.isEmpty() ? null : JSON.toJSONString(excludeUserIds));
+        post.setUpdateTime(LocalDateTime.now());
+
+        int rows = postMapper.updatePost(post);
+        if (rows > 0) {
+            log.info("用户编辑广场帖子成功, userId={}, postId={}", userId, postId);
+            clearPublicPostListCache();
+        }
+    }
+
+    @Override
     public void deletePost(Long userId, Long postId) {
         SquarePost post = postMapper.selectById(postId);
         if (post == null || post.getStatus() == null || post.getStatus() == 0) {
@@ -510,6 +556,7 @@ public class SquareServiceImpl implements SquareService {
         vo.setLiked(liked);
         vo.setFollowed(followed);
         vo.setCreateTime(post.getCreateTime());
+        vo.setUpdateTime(post.getUpdateTime());
         return vo;
     }
 

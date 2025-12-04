@@ -54,5 +54,9 @@ public class SquarePostVO {
     /** 当前用户是否已关注作者 */
     private Boolean followed;
 
+    /** 创建时间 */
     private LocalDateTime createTime;
+
+    /** 最后更新时间（用于显示“编辑于”） */
+    private LocalDateTime updateTime;
 }

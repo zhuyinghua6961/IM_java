@@ -28,6 +28,16 @@ public interface SquareService {
 
     void deletePost(Long userId, Long postId);
 
+    void updatePost(Long userId,
+                    Long postId,
+                    String title,
+                    String content,
+                    List<String> images,
+                    String video,
+                    List<String> tags,
+                    Integer visibleType,
+                    List<Long> excludeUserIds);
+
     void likePost(Long userId, Long postId);
 
     void unlikePost(Long userId, Long postId);

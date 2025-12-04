@@ -61,6 +61,22 @@
           AND status != 0
     </update>
 
+    <!-- 作者编辑帖子 -->
+    <update id="updatePost" parameterType="com.im.square.entity.SquarePost">
+        UPDATE square_post
+        SET title = #{title},
+            content = #{content},
+            images = #{images},
+            video = #{video},
+            tags = #{tags},
+            visible_type = #{visibleType},
+            exclude_users = #{excludeUsers},
+            update_time = CURRENT_TIMESTAMP
+        WHERE id = #{id}
+          AND user_id = #{userId}
+          AND status != 0
+    </update>
+
     <!-- 更新点赞数和评论数（增量） -->
     <update id="updateCounters">
         UPDATE square_post
