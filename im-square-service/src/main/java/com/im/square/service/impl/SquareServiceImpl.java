@@ -11,6 +11,7 @@ import com.im.square.entity.SquarePost;
 import com.im.square.mapper.SquareCommentMapper;
 import com.im.square.mapper.SquareLikeMapper;
 import com.im.square.mapper.SquarePostMapper;
+import com.im.square.mapper.FriendRelationMapper;
 import com.im.square.service.ContentReviewService;
 import com.im.square.service.RemoteSquareNotificationService;
 import com.im.square.service.RemoteUserService;
@@ -38,9 +39,17 @@ public class SquareServiceImpl implements SquareService {
     private final ContentReviewService contentReviewService;
     private final RemoteUserService remoteUserService;
     private final RemoteSquareNotificationService remoteSquareNotificationService;
+    private final FriendRelationMapper friendRelationMapper;
 
     @Override
-    public Long publishPost(Long userId, String title, String content, List<String> images, String video, List<String> tags) {
+    public Long publishPost(Long userId,
+                            String title,
+                            String content,
+                            List<String> images,
+                            String video,
+                            List<String> tags,
+                            Integer visibleType,
+                            List<Long> excludeUserIds) {
         if (content == null || content.trim().isEmpty()) {
             throw new BusinessException(ResultCode.BAD_REQUEST, "内容不能为空");
         }
@@ -56,6 +65,9 @@ public class SquareServiceImpl implements SquareService {
         post.setImages(images == null || images.isEmpty() ? null : JSON.toJSONString(images));
         post.setVideo(video);
         post.setTags(tags == null || tags.isEmpty() ? null : JSON.toJSONString(tags));
+        // 可见范围：默认公开 0
+        post.setVisibleType(visibleType == null ? 0 : visibleType);
+        post.setExcludeUsers(excludeUserIds == null || excludeUserIds.isEmpty() ? null : JSON.toJSONString(excludeUserIds));
         // 当前实现：审核通过后才入广场列表
         post.setStatus(1);
         post.setAuditStatus(1);
@@ -81,6 +93,9 @@ public class SquareServiceImpl implements SquareService {
 
         List<SquarePostVO> records = new ArrayList<>();
         for (SquarePost post : posts) {
+            if (!isPostVisibleToUser(post, currentUserId)) {
+                continue;
+            }
             boolean liked = false;
             if (currentUserId != null) {
                 liked = likeMapper.countByPostAndUser(post.getId(), currentUserId) > 0;
@@ -96,6 +111,9 @@ public class SquareServiceImpl implements SquareService {
         SquarePost post = postMapper.selectById(postId);
         if (post == null || post.getStatus() == null || post.getStatus() == 0 ||
                 post.getAuditStatus() == null || post.getAuditStatus() != 1) {
+            throw new BusinessException(ResultCode.SQUARE_POST_NOT_FOUND);
+        }
+        if (!isPostVisibleToUser(post, currentUserId)) {
             throw new BusinessException(ResultCode.SQUARE_POST_NOT_FOUND);
         }
         boolean liked = currentUserId != null && likeMapper.countByPostAndUser(postId, currentUserId) > 0;
@@ -257,6 +275,8 @@ public class SquareServiceImpl implements SquareService {
             vo.setNickname(profile.getNickname());
             vo.setAvatar(profile.getAvatar());
         }
+        vo.setVisibleType(post.getVisibleType());
+        vo.setExcludeUserIds(parseLongArray(post.getExcludeUsers()));
         vo.setTitle(post.getTitle());
         vo.setContent(post.getContent());
         vo.setImages(parseJsonArray(post.getImages()));
@@ -295,5 +315,76 @@ public class SquareServiceImpl implements SquareService {
             log.warn("解析 JSON 数组失败: {}", json, e);
             return Collections.emptyList();
         }
+    }
+
+    private List<Long> parseLongArray(String json) {
+        if (json == null || json.isEmpty()) {
+            return Collections.emptyList();
+        }
+        try {
+            return JSON.parseArray(json, Long.class);
+        } catch (Exception e) {
+            log.warn("解析 Long 数组失败: {}", json, e);
+            return Collections.emptyList();
+        }
+    }
+
+    /**
+     * 判断帖子对当前用户是否可见
+     */
+    private boolean isPostVisibleToUser(SquarePost post, Long viewerId) {
+        if (post == null || post.getStatus() == null || post.getStatus() != 1 ||
+                post.getAuditStatus() == null || post.getAuditStatus() != 1) {
+            return false;
+        }
+
+        // 作者自己永远可见
+        if (viewerId != null && Objects.equals(post.getUserId(), viewerId)) {
+            return true;
+        }
+
+        // 未登录用户视为游客
+        if (viewerId != null && isExcludedForUser(post, viewerId)) {
+            return false;
+        }
+
+        Integer vt = post.getVisibleType();
+        if (vt == null || vt == 0) {
+            // 公开：所有人可见（排除名单之外）
+            return true;
+        } else if (vt == 1) {
+            // 仅好友：作者自己 + 好友可见
+            if (viewerId == null) {
+                return false;
+            }
+            return friendRelationMapper.countFriendship(viewerId, post.getUserId()) > 0;
+        } else {
+            // 未知类型，按公开处理
+            return true;
+        }
+    }
+
+    private boolean isExcludedForUser(SquarePost post, Long viewerId) {
+        if (viewerId == null) {
+            return false;
+        }
+        String json = post.getExcludeUsers();
+        if (json == null || json.isEmpty()) {
+            return false;
+        }
+        try {
+            List<Long> ids = JSON.parseArray(json, Long.class);
+            if (ids == null || ids.isEmpty()) {
+                return false;
+            }
+            for (Long id : ids) {
+                if (Objects.equals(id, viewerId)) {
+                    return true;
+                }
+            }
+        } catch (Exception e) {
+            log.warn("解析排除可见用户列表失败: {}", json, e);
+        }
+        return false;
     }
 }

@@ -13,7 +13,9 @@ public interface SquareService {
                      String content,
                      List<String> images,
                      String video,
-                     List<String> tags);
+                     List<String> tags,
+                     Integer visibleType,
+                     List<Long> excludeUserIds);
 
     PageResult<SquarePostVO> listPublicPosts(Long currentUserId, int page, int size);
 

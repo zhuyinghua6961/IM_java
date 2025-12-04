@@ -23,6 +23,12 @@ public class SquarePostVO {
 
     private String avatar;
 
+    /** 可见范围 0-公开 1-仅好友 */
+    private Integer visibleType;
+
+    /** 排除可见的好友ID列表 */
+    private java.util.List<Long> excludeUserIds;
+
     private String title;
 
     private String content;

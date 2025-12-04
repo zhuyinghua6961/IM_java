@@ -35,6 +35,12 @@ public interface SquareNotificationMapper {
     int markAllReadByUserId(@Param("userId") Long userId);
 
     /**
+     * 将当前用户指定的广场通知标记为已读
+     */
+    int markReadByUserAndIds(@Param("userId") Long userId,
+                             @Param("ids") List<Long> ids);
+
+    /**
      * 统计用户未读的广场通知数量
      */
     int countUnreadByUserId(@Param("userId") Long userId);

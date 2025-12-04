@@ -10,6 +10,8 @@
         <result column="images" property="images"/>
         <result column="video" property="video"/>
         <result column="tags" property="tags"/>
+        <result column="visible_type" property="visibleType"/>
+        <result column="exclude_users" property="excludeUsers"/>
         <result column="status" property="status"/>
         <result column="audit_status" property="auditStatus"/>
         <result column="audit_reason" property="auditReason"/>
@@ -21,6 +23,7 @@
 
     <sql id="Base_Column_List">
         id, user_id, title, content, images, video, tags,
+        visible_type, exclude_users,
         status, audit_status, audit_reason,
         like_count, comment_count,
         create_time, update_time
@@ -30,10 +33,12 @@
     <insert id="insert" parameterType="com.im.square.entity.SquarePost" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO square_post (
             user_id, title, content, images, video, tags,
+            visible_type, exclude_users,
             status, audit_status, audit_reason,
             like_count, comment_count, create_time, update_time
         ) VALUES (
             #{userId}, #{title}, #{content}, #{images}, #{video}, #{tags},
+            #{visibleType}, #{excludeUsers},
             #{status}, #{auditStatus}, #{auditReason},
             #{likeCount}, #{commentCount}, #{createTime}, #{updateTime}
         )

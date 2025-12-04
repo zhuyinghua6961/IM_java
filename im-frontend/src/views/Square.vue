@@ -81,26 +81,50 @@
 
     <!-- 我的广场消息 -->
     <el-scrollbar v-else class="square-list">
-      <div class="notify-actions" v-if="notifications.length > 0">
-        <el-button text size="small" @click="handleMarkAllRead">全部标记为已读</el-button>
-      </div>
-      <div
-        v-for="item in notifications"
-        :key="item.id"
-        class="notify-item"
-        :class="{ 'notify-item--unread': item.read === 0 }"
-      >
-        <div class="notify-message">{{ item.message }}</div>
-        <div class="notify-meta">
-          <span class="notify-time">{{ formatTime(item.createTime) }}</span>
-          <span class="notify-type" v-if="item.actionType === 'LIKE'">点赞</span>
-          <span class="notify-type" v-else-if="item.actionType === 'COMMENT'">评论</span>
-        </div>
-      </div>
+      <el-tabs v-model="notifyInnerTab">
+        <el-tab-pane label="未读" name="unread">
+          <div class="notify-actions" v-if="unreadNotifications.length > 0">
+            <el-button text size="small" @click="handleMarkAllRead">全部标记为已读</el-button>
+          </div>
+          <div
+            v-for="item in unreadNotifications"
+            :key="item.id"
+            class="notify-item"
+            :class="{ 'notify-item--unread': item.read === 0 }"
+            @click="handleClickNotification(item)"
+          >
+            <div class="notify-message">{{ item.message }}</div>
+            <div class="notify-meta">
+              <span class="notify-time">{{ formatTime(item.createTime) }}</span>
+              <span class="notify-type" v-if="item.actionType === 'LIKE'">点赞</span>
+              <span class="notify-type" v-else-if="item.actionType === 'COMMENT'">评论</span>
+            </div>
+          </div>
 
-      <div v-if="!notifyLoading && notifications.length === 0" class="empty-tip">
-        暂无广场消息
-      </div>
+          <div v-if="!notifyLoading && unreadNotifications.length === 0" class="empty-tip">
+            暂无未读消息
+          </div>
+        </el-tab-pane>
+
+        <el-tab-pane label="已读" name="read">
+          <div
+            v-for="item in readNotifications"
+            :key="item.id"
+            class="notify-item"
+          >
+            <div class="notify-message">{{ item.message }}</div>
+            <div class="notify-meta">
+              <span class="notify-time">{{ formatTime(item.createTime) }}</span>
+              <span class="notify-type" v-if="item.actionType === 'LIKE'">点赞</span>
+              <span class="notify-type" v-else-if="item.actionType === 'COMMENT'">评论</span>
+            </div>
+          </div>
+
+          <div v-if="!notifyLoading && readNotifications.length === 0" class="empty-tip">
+            暂无已读消息
+          </div>
+        </el-tab-pane>
+      </el-tabs>
 
       <div class="load-more" v-if="notifyHasMore">
         <el-button :loading="notifyLoading" @click="loadMoreNotifications">加载更多</el-button>
@@ -130,6 +154,30 @@
             :rows="2"
             placeholder="可选，输入图片 URL，多个用换行分隔"
           />
+        </el-form-item>
+        <el-form-item label="范围">
+          <el-radio-group v-model="publishForm.visibleType">
+            <el-radio :label="0">公开</el-radio>
+            <el-radio :label="1">仅好友</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="不给谁看">
+          <el-select
+            v-model="publishForm.excludeUserIds"
+            multiple
+            filterable
+            collapse-tags
+            placeholder="可选，从好友里选择不希望看到这条帖的人"
+            :loading="friendLoading"
+            @visible-change="handleFriendSelectVisible"
+          >
+            <el-option
+              v-for="f in friendOptions"
+              :key="f.userId"
+              :label="f.remark || f.nickname || f.username || `用户 ${f.userId}`"
+              :value="f.userId"
+            />
+          </el-select>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -193,6 +241,7 @@ import { ref, onMounted, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Plus, ChatDotRound, Star } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
+import { getFriendList } from '@/api/friend'
 import {
   publishSquarePost,
   getSquarePosts,
@@ -204,13 +253,15 @@ import {
   addSquareComment,
   deleteSquareComment,
   getSquareNotifications,
-  markSquareNotificationsRead
+  markSquareNotificationsRead,
+  markSquareNotificationsReadByIds
 } from '@/api/square'
 
 const userStore = useUserStore()
 const currentUserId = computed(() => userStore.userInfo?.userId || null)
 
 const activeTab = ref('all')
+const notifyInnerTab = ref('unread')
 
 const posts = ref([])
 const page = ref(1)
@@ -223,8 +274,13 @@ const publishing = ref(false)
 const publishForm = ref({
   title: '',
   content: '',
-  imagesText: ''
+  imagesText: '',
+  visibleType: 0,
+  excludeUserIds: []
 })
+
+const friendOptions = ref([])
+const friendLoading = ref(false)
 
 const showCommentDialog = ref(false)
 const currentPostId = ref(null)
@@ -242,6 +298,14 @@ const notifySize = ref(20)
 const notifyHasMore = ref(true)
 const notifyLoading = ref(false)
 const notifyUnread = ref(0)
+
+const unreadNotifications = computed(() =>
+  notifications.value.filter(item => item.read === 0)
+)
+
+const readNotifications = computed(() =>
+  notifications.value.filter(item => item.read === 1)
+)
 
 const formatTime = (time) => {
   if (!time) return ''
@@ -310,6 +374,20 @@ const loadNotifications = async (reset = false) => {
   }
 }
 
+const handleClickNotification = async (item) => {
+  if (!item || item.read === 1) return
+  const id = item.id
+  if (!id) return
+  // 先本地更新体验更顺滑
+  item.read = 1
+  notifyUnread.value = Math.max((notifyUnread.value || 0) - 1, 0)
+  try {
+    await markSquareNotificationsReadByIds([id])
+  } catch (error) {
+    console.error('单条标记广场消息已读失败:', error)
+  }
+}
+
 const loadMoreNotifications = () => {
   if (!notifyHasMore.value) return
   notifyPage.value += 1
@@ -348,16 +426,37 @@ const handlePublish = async () => {
       content: publishForm.value.content,
       images,
       video: null,
-      tags: []
+      tags: [],
+      visibleType: publishForm.value.visibleType,
+      excludeUserIds: publishForm.value.excludeUserIds || []
     })
     ElMessage.success('发布成功')
     showPublishDialog.value = false
-    publishForm.value = { title: '', content: '', imagesText: '' }
+    publishForm.value = { title: '', content: '', imagesText: '', visibleType: 0, excludeUserIds: [] }
     await loadPosts(true)
   } catch (error) {
     console.error('发布帖子失败:', error)
   } finally {
     publishing.value = false
+  }
+}
+
+const handleFriendSelectVisible = (visible) => {
+  if (visible && friendOptions.value.length === 0) {
+    loadFriendOptions()
+  }
+}
+
+const loadFriendOptions = async () => {
+  if (friendLoading.value) return
+  friendLoading.value = true
+  try {
+    const res = await getFriendList()
+    friendOptions.value = res.data || []
+  } catch (error) {
+    console.error('加载好友列表失败:', error)
+  } finally {
+    friendLoading.value = false
   }
 }
 

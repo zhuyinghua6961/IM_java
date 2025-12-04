@@ -30,6 +30,12 @@ public class SquarePost {
     /** 标签 JSON 数组 */
     private String tags;
 
+    /** 可见范围 0-公开 1-仅好友 */
+    private Integer visibleType;
+
+    /** 排除可见的好友ID JSON 数组 */
+    private String excludeUsers;
+
     /** 状态 0-已删除 1-正常 2-审核未通过 */
     private Integer status;
 

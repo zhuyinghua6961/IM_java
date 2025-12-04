@@ -89,6 +89,21 @@ public class SquareNotificationController {
         return Result.success();
     }
 
+    /**
+     * 将当前用户指定的广场通知标记为已读
+     */
+    @PostMapping("/read/ids")
+    public Result<Void> markReadByIds(@RequestBody Map<String, List<Long>> body) {
+        Long userId = UserContext.getCurrentUserId();
+        if (body == null || !body.containsKey("ids") || body.get("ids") == null || body.get("ids").isEmpty()) {
+            return Result.success();
+        }
+        List<Long> ids = body.get("ids");
+        int updated = squareNotificationMapper.markReadByUserAndIds(userId, ids);
+        log.info("按ID标记广场通知已读: userId={}, updated={}, ids={}", userId, updated, ids);
+        return Result.success();
+    }
+
     @Data
     public static class SquareNotificationCreateDTO {
         /** 接收通知的用户ID */

@@ -35,9 +35,50 @@ public class SquareController {
         @SuppressWarnings("unchecked")
         List<String> tags = (List<String>) params.get("tags");
 
+        Integer visibleType = null;
+        Object vtObj = params.get("visibleType");
+        if (vtObj instanceof Number) {
+            visibleType = ((Number) vtObj).intValue();
+        } else if (vtObj instanceof String) {
+            String s = ((String) vtObj).trim();
+            if (!"".equals(s)) {
+                try {
+                    visibleType = Integer.parseInt(s);
+                } catch (NumberFormatException ignored) {
+                }
+            }
+        }
+
+        List<Long> excludeUserIds = null;
+        Object excludeObj = params.get("excludeUserIds");
+        if (excludeObj instanceof List) {
+            @SuppressWarnings("unchecked")
+            List<Object> rawList = (List<Object>) excludeObj;
+            if (!rawList.isEmpty()) {
+                excludeUserIds = new java.util.ArrayList<>();
+                for (Object o : rawList) {
+                    if (o == null) continue;
+                    if (o instanceof Number) {
+                        excludeUserIds.add(((Number) o).longValue());
+                    } else if (o instanceof String) {
+                        String s = ((String) o).trim();
+                        if (!"".equals(s)) {
+                            try {
+                                excludeUserIds.add(Long.parseLong(s));
+                            } catch (NumberFormatException ignored) {
+                            }
+                        }
+                    }
+                }
+                if (excludeUserIds.isEmpty()) {
+                    excludeUserIds = null;
+                }
+            }
+        }
+
         log.info("发布广场帖子: userId={}, title={}", userId, title);
 
-        Long postId = squareService.publishPost(userId, title, content, images, video, tags);
+        Long postId = squareService.publishPost(userId, title, content, images, video, tags, visibleType, excludeUserIds);
         return Result.success(Map.of("postId", postId));
     }
 

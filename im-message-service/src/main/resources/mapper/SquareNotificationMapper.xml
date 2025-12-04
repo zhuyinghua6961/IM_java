@@ -57,4 +57,16 @@
           AND `read` = 0
     </update>
 
+    <!-- 将当前用户指定的广场通知标记为已读 -->
+    <update id="markReadByUserAndIds">
+        UPDATE square_notification
+        SET `read` = 1
+        WHERE user_id = #{userId}
+          AND `read` = 0
+          AND id IN
+          <foreach collection="ids" item="id" open="(" separator="," close=")">
+              #{id}
+          </foreach>
+    </update>
+
 </mapper>

@@ -101,3 +101,12 @@ export function markSquareNotificationsRead() {
     method: 'post'
   })
 }
+
+// 按ID批量将广场消息标记为已读
+export function markSquareNotificationsReadByIds(ids) {
+  return request({
+    url: '/notification/square/read/ids',
+    method: 'post',
+    data: { ids }
+  })
+}

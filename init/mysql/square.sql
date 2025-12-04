@@ -11,6 +11,8 @@ CREATE TABLE `square_post` (
   `images` JSON DEFAULT NULL COMMENT '图片URL数组',
   `video` VARCHAR(500) DEFAULT NULL COMMENT '视频URL',
   `tags` JSON DEFAULT NULL COMMENT '标签数组',
+  `visible_type` TINYINT DEFAULT 0 COMMENT '可见范围 0-公开 1-仅好友',
+  `exclude_users` JSON DEFAULT NULL COMMENT '排除可见的好友ID数组',
   `status` TINYINT DEFAULT 1 COMMENT '状态 0-已删除 1-正常 2-审核未通过',
   `audit_status` TINYINT DEFAULT 0 COMMENT '审核状态 0-未审核/跳过 1-通过 2-拒绝',
   `audit_reason` VARCHAR(255) DEFAULT NULL COMMENT '审核不通过原因',
