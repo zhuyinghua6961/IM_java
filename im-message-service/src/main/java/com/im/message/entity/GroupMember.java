@@ -15,4 +15,5 @@ public class GroupMember {
     private Integer status;  // 1-正常 0-已退出
     private LocalDateTime joinTime;
     private LocalDateTime updateTime;
+    private LocalDateTime muteUntil; // 禁言截止时间，null 表示未禁言
 }

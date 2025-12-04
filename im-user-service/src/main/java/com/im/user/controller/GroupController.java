@@ -2,6 +2,8 @@ package com.im.user.controller;
 
 import java.util.List;
 import java.util.Map;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -201,5 +203,25 @@ public class GroupController {
     public Result<Boolean> isGroupMuted(@PathVariable("groupId") Long groupId) {
         boolean muted = groupService.isGroupMuted(groupId);
         return Result.success(muted);
+    }
+
+    /**
+     * 禁言/解除禁言群成员（群主/管理员）
+     */
+    @PostMapping("/{groupId}/member/mute")
+    public Result<Void> muteMember(@PathVariable("groupId") Long groupId,
+                                   @RequestBody Map<String, Object> request) {
+        Long userId = Long.valueOf(request.get("userId").toString());
+        Object muteUntilObj = request.get("muteUntil");
+        LocalDateTime muteUntil = null;
+        if (muteUntilObj != null) {
+            String text = muteUntilObj.toString().trim();
+            if (!text.isEmpty()) {
+                DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+                muteUntil = LocalDateTime.parse(text, formatter);
+            }
+        }
+        groupService.muteMember(groupId, userId, muteUntil);
+        return Result.success();
     }
 }

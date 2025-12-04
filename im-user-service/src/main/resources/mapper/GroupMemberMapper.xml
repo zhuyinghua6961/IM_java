@@ -12,6 +12,7 @@
         <result column="join_time" property="joinTime"/>
         <result column="status" property="status"/>
         <result column="muted" property="muted"/>
+        <result column="mute_until" property="muteUntil"/>
         <result column="create_time" property="createTime"/>
         <result column="update_time" property="updateTime"/>
     </resultMap>
@@ -137,6 +138,15 @@
     <update id="updateMuted">
         UPDATE group_member
         SET muted = #{muted}
+        WHERE group_id = #{groupId}
+          AND user_id = #{userId}
+          AND status = 1
+    </update>
+
+    <!-- 更新禁言截止时间 -->
+    <update id="updateMuteUntil">
+        UPDATE group_member
+        SET mute_until = #{muteUntil}
         WHERE group_id = #{groupId}
           AND user_id = #{userId}
           AND status = 1

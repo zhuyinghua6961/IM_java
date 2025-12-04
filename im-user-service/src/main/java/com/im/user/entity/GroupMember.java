@@ -15,4 +15,5 @@ public class GroupMember extends BaseEntity {
     private LocalDateTime joinTime;
     private Integer status;
     private Integer muted; // 免打扰：0-正常，1-免打扰
+    private LocalDateTime muteUntil; // 禁言截止时间，null 表示未禁言
 }

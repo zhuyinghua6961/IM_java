@@ -2,6 +2,7 @@ package com.im.message.handler;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.im.common.context.UserContext;
+import com.im.common.exception.BusinessException;
 import com.im.message.dto.MessageDTO;
 import com.im.message.entity.GroupMember;
 import com.im.message.mapper.GroupMemberMapper;
@@ -122,10 +123,16 @@ public class WebSocketMessageHandler {
             
         } catch (Exception e) {
             log.error("处理WebSocket消息失败", e);
-            // 尝试获取userId发送错误消息
-            Long fromUserId = (Long) headerAccessor.getSessionAttributes().get("userId");
-            String recipient = fromUserId != null ? String.valueOf(fromUserId) : headerAccessor.getSessionId();
-            sendErrorMessage(recipient, "消息发送失败: " + e.getMessage());
+            // 使用 sessionId 作为错误队列后缀
+            String sessionId = headerAccessor.getSessionId();
+            String errorMsg;
+            if (e instanceof BusinessException) {
+                // 业务异常直接透传文案，例如：您已被禁言，暂时无法在该群发送消息
+                errorMsg = e.getMessage();
+            } else {
+                errorMsg = "消息发送失败: " + e.getMessage();
+            }
+            sendErrorMessage(sessionId, errorMsg);
         } finally {
             UserContext.clear();
         }

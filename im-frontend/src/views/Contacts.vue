@@ -1134,24 +1134,66 @@ const loadGroupInvitations = async () => {
   }
 }
 
-// 加载群消息通知列表
-const loadGroupNotifications = () => {
-  // 从 localStorage 加载通知
-  const stored = localStorage.getItem('groupNotifications')
-  if (stored) {
-    try {
-      groupNotifications.value = JSON.parse(stored)
-    } catch (error) {
-      console.error('解析群消息通知失败:', error)
-      groupNotifications.value = []
+// 加载群消息通知列表（从后端拉取历史）
+const loadGroupNotifications = async () => {
+  try {
+    const res = await request.get('/notification/group', {
+      params: { page: 1, size: 100 }
+    })
+    const records = (res.data && res.data.records) || []
+
+    const result = []
+    const mutedGroupSet = new Set()
+
+    for (const item of records) {
+      // 对禁言变更通知做去重：同一群组只保留一条最新记录
+      if (item.type === 'GROUP_MEMBER_MUTED' && item.groupId) {
+        const key = String(item.groupId)
+        if (mutedGroupSet.has(key)) {
+          continue
+        }
+        mutedGroupSet.add(key)
+      }
+
+      let groupName = '未知群组'
+      let groupAvatar = ''
+      if (item.extra) {
+        try {
+          const extra = JSON.parse(item.extra)
+          if (extra.groupName) groupName = extra.groupName
+          if (extra.groupAvatar) groupAvatar = extra.groupAvatar
+        } catch (e) {
+          console.error('解析群通知 extra 失败:', e)
+        }
+      }
+
+      result.push({
+        id: item.id,
+        type: item.type,
+        groupId: item.groupId,
+        groupName,
+        groupAvatar,
+        message: item.message,
+        createTime: item.createTime,
+        read: item.read === 1
+      })
     }
+
+    groupNotifications.value = result
+  } catch (error) {
+    console.error('加载群消息通知失败:', error)
+    ElMessage.error('加载群消息通知失败')
   }
 }
 
 // 标记群消息通知为已读
-const markGroupNotificationsAsRead = () => {
-  groupNotifications.value.forEach(n => n.read = true)
-  localStorage.setItem('groupNotifications', JSON.stringify(groupNotifications.value))
+const markGroupNotificationsAsRead = async () => {
+  try {
+    await request.post('/notification/group/read')
+    groupNotifications.value.forEach(n => { n.read = true })
+  } catch (error) {
+    console.error('标记群消息通知为已读失败:', error)
+  }
 }
 
 // 加载黑名单列表
@@ -1216,23 +1258,27 @@ const handleUnmuteFriend = async (item) => {
 
 // 添加群消息通知
 const addGroupNotification = (notification) => {
+  // 对禁言变更通知做去重：同一群组只保留一条最新记录
+  if (notification.type === 'GROUP_MEMBER_MUTED' && notification.groupId) {
+    groupNotifications.value = groupNotifications.value.filter(item => {
+      return !(item.type === 'GROUP_MEMBER_MUTED' && item.groupId === notification.groupId)
+    })
+  }
+
   groupNotifications.value.unshift({
-    id: Date.now(),
+    id: notification.id || Date.now(),
     type: notification.type,
     groupId: notification.groupId,
     groupName: notification.groupName || '未知群组',
     groupAvatar: notification.groupAvatar || '',
     message: notification.message,
-    createTime: new Date().toISOString(),
+    createTime: notification.createTime || new Date().toISOString(),
     read: false
   })
-  
   // 只保留最近100条通知
   if (groupNotifications.value.length > 100) {
     groupNotifications.value = groupNotifications.value.slice(0, 100)
   }
-  
-  localStorage.setItem('groupNotifications', JSON.stringify(groupNotifications.value))
 }
 
 // 获取通知类型标签
@@ -1245,7 +1291,8 @@ const getNotificationTypeTag = (type) => {
     'GROUP_DISSOLVED': 'danger',
     'GROUP_OWNER_TRANSFER': 'warning',
     'GROUP_INFO_UPDATE': 'warning',
-    'GROUP_NEW_MEMBER': 'success'
+    'GROUP_NEW_MEMBER': 'success',
+    'GROUP_MEMBER_MUTED': 'warning'
   }
   return tagMap[type] || 'info'
 }
@@ -1260,7 +1307,8 @@ const getNotificationTypeText = (type) => {
     'GROUP_DISSOLVED': '群组解散',
     'GROUP_OWNER_TRANSFER': '群主转让',
     'GROUP_INFO_UPDATE': '群公告更新',
-    'GROUP_NEW_MEMBER': '新成员加入'
+    'GROUP_NEW_MEMBER': '新成员加入',
+    'GROUP_MEMBER_MUTED': '禁言变更'
   }
   return textMap[type] || '系统通知'
 }
@@ -1873,7 +1921,8 @@ const handleGroupNotificationEvent = (event) => {
     'GROUP_DISSOLVED',
     'GROUP_OWNER_TRANSFER',
     'GROUP_INFO_UPDATE',
-    'GROUP_NEW_MEMBER'
+    'GROUP_NEW_MEMBER',
+    'GROUP_MEMBER_MUTED'
   ]
   
   if (displayTypes.includes(notification.type)) {

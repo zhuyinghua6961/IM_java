@@ -113,6 +113,9 @@
           </div>
           <div class="header-right">
             <!-- 群公告按钮（仅群聊显示） -->
+            <el-tooltip v-if="selectedConv.chatType === 2 && isGroupAdmin" content="群成员管理" placement="bottom">
+              <el-button text @click="openGroupMemberDialog">成员</el-button>
+            </el-tooltip>
             <el-tooltip v-if="selectedConv.chatType === 2" content="群公告" placement="bottom">
               <el-button text :icon="Bell" @click="showAnnouncementDialog = true" />
             </el-tooltip>
@@ -433,6 +436,67 @@
       </div>
     </el-dialog>
     
+    <el-dialog
+      v-model="showGroupMemberDialog"
+      title="群成员管理"
+      width="600px"
+      destroy-on-close
+    >
+      <el-table :data="atMembers" size="small" style="width: 100%">
+        <el-table-column type="index" label="#" width="50" />
+        <el-table-column label="成员">
+          <template #default="{ row }">
+            {{ row.groupNickname || row.nickname || ('用户' + row.userId) }}
+            <el-tag v-if="row.role === 2" type="danger" size="small" style="margin-left: 8px;">群主</el-tag>
+            <el-tag v-else-if="row.role === 1" type="success" size="small" style="margin-left: 8px;">管理员</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="禁言状态" width="200">
+          <template #default="{ row }">
+            <span v-if="isMemberMuted(row)">禁言至 {{ formatMuteUntil(row.muteUntil) }}</span>
+            <span v-else>未禁言</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="220">
+          <template #default="{ row }">
+            <el-button
+              text
+              size="small"
+              @click="handleMuteMember(row, 60)"
+              :disabled="!canManageMember(row)"
+            >
+              禁言1小时
+            </el-button>
+            <el-button
+              text
+              size="small"
+              @click="handleMuteMember(row, 1440)"
+              :disabled="!canManageMember(row)"
+            >
+              禁言1天
+            </el-button>
+            <el-button
+              text
+              size="small"
+              @click="handleCustomMuteMember(row)"
+              :disabled="!canManageMember(row)"
+            >
+              自定义
+            </el-button>
+            <el-button
+              text
+              size="small"
+              type="danger"
+              @click="handleUnmuteMember(row)"
+              :disabled="!canManageMember(row) || !isMemberMuted(row)"
+            >
+              解除禁言
+            </el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-dialog>
+    
     <!-- 群公告弹窗 -->
     <el-dialog
       v-model="showAnnouncementDialog"
@@ -535,7 +599,7 @@ import {
   Edit
 } from '@element-plus/icons-vue'
 import request from '@/utils/request'
-import { setGroupMuted, getGroupMuted } from '@/api/group'
+import { setGroupMuted, getGroupMuted, muteGroupMember } from '@/api/group'
 import { getAnnouncementList, publishAnnouncement, updateAnnouncement, deleteAnnouncement } from '@/api/announcement'
 import { setFriendMuted, getFriendMuted } from '@/api/friend'
 import { useUserStore } from '@/stores/user'
@@ -681,6 +745,11 @@ onMounted(async () => {
         // 加载历史消息
         await loadHistoryMessages()
         console.log('历史消息加载完成')
+
+        // 如果是群聊，会话初始化后加载一次群成员列表，用于权限判断和禁言管理
+        if (selectedConv.value && selectedConv.value.chatType === 2) {
+          await loadGroupMembersForAt()
+        }
       } catch (error) {
         console.error('处理URL参数失败:', error)
       }
@@ -1023,6 +1092,11 @@ const selectConversation = (conv) => {
   selectedConv.value = conv
   loadHistoryMessages()
   
+  // 如果是群聊，会话切换时加载群成员列表，用于@选择和权限判断
+  if (conv.chatType === 2) {
+    loadGroupMembersForAt()
+  }
+  
   // 清除@状态
   if (conv.hasAtMe) {
     chatStore.clearHasAtMe(conv.id)
@@ -1103,6 +1177,9 @@ const sendMessage = async () => {
         // 如果是被拉黑，添加特殊的失败原因
         if (error.message === 'BLOCKED') {
           messages.value[msgIndex].failedReason = '对方已将你拉黑，无法发送消息'
+        } else if (error.message && error.message.includes('禁言')) {
+          // 被禁言的情况，直接展示后端返回的提示文案
+          messages.value[msgIndex].failedReason = error.message
         } else {
           messages.value[msgIndex].failedReason = '发送失败，请检查网络'
         }
@@ -2347,6 +2424,115 @@ const scrollToMessage = (messageId) => {
       highlightMessageId.value = null
     }
   })
+}
+
+const showGroupMemberDialog = ref(false)
+
+const currentGroupRole = computed(() => {
+  if (!selectedConv.value || selectedConv.value.chatType !== 2) return null
+  const currentMember = atMembers.value.find(m => m.userId === currentUserId.value)
+  if (!currentMember || currentMember.role == null) return null
+  return currentMember.role
+})
+
+const isMemberMuted = (member) => {
+  if (!member || !member.muteUntil) return false
+  const t = new Date(member.muteUntil)
+  if (isNaN(t.getTime())) return false
+  return t.getTime() > Date.now()
+}
+
+const formatMuteUntil = (time) => {
+  if (!time) return ''
+  const date = new Date(time)
+  if (isNaN(date.getTime())) return ''
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  const hh = String(date.getHours()).padStart(2, '0')
+  const mm = String(date.getMinutes()).padStart(2, '0')
+  return `${y}-${m}-${d} ${hh}:${mm}`
+}
+
+const canManageMember = (member) => {
+  if (!isGroupAdmin.value) return false
+  if (!member) return false
+  if (member.userId === currentUserId.value) return false
+  if (member.role === 2) return false
+  const role = currentGroupRole.value
+  if (role === 1 && member.role === 1) return false
+  return true
+}
+
+const openGroupMemberDialog = async () => {
+  if (!selectedConv.value || selectedConv.value.chatType !== 2) return
+  if (atMembers.value.length === 0) {
+    await loadGroupMembersForAt()
+  }
+  showGroupMemberDialog.value = true
+}
+
+const buildMuteUntil = (minutes) => {
+  const date = new Date()
+  date.setMinutes(date.getMinutes() + minutes)
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  const hh = String(date.getHours()).padStart(2, '0')
+  const mm = String(date.getMinutes()).padStart(2, '0')
+  const ss = String(date.getSeconds()).padStart(2, '0')
+  return `${y}-${m}-${d} ${hh}:${mm}:${ss}`
+}
+
+const handleMuteMember = async (member, minutes) => {
+  if (!selectedConv.value || selectedConv.value.chatType !== 2) return
+  const groupId = selectedConv.value.targetId
+  const muteUntil = buildMuteUntil(minutes)
+  try {
+    await muteGroupMember(groupId, member.userId, muteUntil)
+    ElMessage.success('已设置禁言')
+    await loadGroupMembersForAt()
+  } catch (error) {
+    console.error('设置禁言失败:', error)
+    ElMessage.error('设置禁言失败')
+  }
+}
+
+const handleCustomMuteMember = async (member) => {
+  if (!selectedConv.value || selectedConv.value.chatType !== 2) return
+  try {
+    const { value } = await ElMessageBox.prompt('请输入禁言时长（分钟）', '自定义禁言时长', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      inputPlaceholder: '例如：60',
+      inputPattern: /^\\d+$/,
+      inputErrorMessage: '请输入大于0的数字'
+    })
+    const minutes = parseInt(value, 10)
+    if (isNaN(minutes) || minutes <= 0) {
+      ElMessage.warning('请输入大于0的数字')
+      return
+    }
+    await handleMuteMember(member, minutes)
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('自定义禁言失败:', error)
+      ElMessage.error('自定义禁言失败')
+    }
+  }
+}
+
+const handleUnmuteMember = async (member) => {
+  if (!selectedConv.value || selectedConv.value.chatType !== 2) return
+  const groupId = selectedConv.value.targetId
+  try {
+    await muteGroupMember(groupId, member.userId, null)
+    ElMessage.success('已解除禁言')
+    await loadGroupMembersForAt()
+  } catch (error) {
+    console.error('解除禁言失败:', error)
+    ElMessage.error('解除禁言失败')
+  }
 }
 
 // ========== 群公告相关方法 ==========

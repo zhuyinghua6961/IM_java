@@ -1,6 +1,7 @@
 package com.im.user.service;
 
 import java.util.List;
+import java.time.LocalDateTime;
 
 import com.im.user.dto.GroupDTO;
 import com.im.user.vo.GroupInvitationVO;
@@ -119,4 +120,12 @@ public interface GroupService {
      * @return 是否免打扰
      */
     boolean isGroupMuted(Long groupId);
+
+    /**
+     * 禁言或解除禁言群成员
+     * @param groupId 群组ID
+     * @param userId 成员用户ID
+     * @param muteUntil 禁言截止时间，null 表示解除禁言
+     */
+    void muteMember(Long groupId, Long userId, LocalDateTime muteUntil);
 }

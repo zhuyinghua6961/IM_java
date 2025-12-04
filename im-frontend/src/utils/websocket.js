@@ -156,7 +156,8 @@ class WebSocketClient {
             'GROUP_DISSOLVED',
             'GROUP_OWNER_TRANSFER',
             'GROUP_INFO_UPDATE',
-            'GROUP_NEW_MEMBER'
+            'GROUP_NEW_MEMBER',
+            'GROUP_MEMBER_MUTED'
           ]
           if (groupNotificationTypes.includes(data.type)) {
             window.dispatchEvent(new CustomEvent('groupNotification', { detail: data }))
@@ -229,6 +230,8 @@ class WebSocketClient {
           ].includes(data.type)) {
             // 群组相关通知：不弹窗，只推送到群消息通知列表（通过 groupNotification 事件）
             // 事件已在上面触发，这里不需要额外处理
+          } else if (data.type === 'GROUP_MEMBER_MUTED') {
+            // GROUP_MEMBER_MUTED 只进入群消息通知列表，不弹出通知
           } else {
             // 其他类型通知
             ElNotification({

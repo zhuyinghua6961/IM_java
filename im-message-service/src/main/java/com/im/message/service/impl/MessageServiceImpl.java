@@ -78,6 +78,10 @@ public class MessageServiceImpl implements MessageService {
             if (member == null || member.getStatus() == null || member.getStatus() != 1) {
                 throw new BusinessException(ResultCode.FORBIDDEN, "您不是该群的成员，无法发送消息");
             }
+            // 校验是否被禁言
+            if (member.getMuteUntil() != null && LocalDateTime.now().isBefore(member.getMuteUntil())) {
+                throw new BusinessException(ResultCode.FORBIDDEN, "您已被禁言，暂时无法在该群发送消息");
+            }
         } else {
             throw new BusinessException(ResultCode.BAD_REQUEST, "不支持的聊天类型");
         }

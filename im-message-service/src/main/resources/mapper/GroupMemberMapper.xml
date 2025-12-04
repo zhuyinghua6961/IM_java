@@ -11,11 +11,12 @@
         <result column="status" property="status"/>
         <result column="join_time" property="joinTime"/>
         <result column="update_time" property="updateTime"/>
+        <result column="mute_until" property="muteUntil"/>
     </resultMap>
     
     <!-- 查询用户在某个群的成员信息 -->
     <select id="selectByGroupIdAndUserId" resultMap="BaseResultMap">
-        SELECT id, group_id, user_id, role, status, join_time, update_time
+        SELECT id, group_id, user_id, role, status, join_time, update_time, mute_until
         FROM group_member
         WHERE group_id = #{groupId} AND user_id = #{userId}
     </select>

@@ -70,4 +70,9 @@ public interface GroupMemberMapper {
      * 更新免打扰状态
      */
     int updateMuted(@Param("groupId") Long groupId, @Param("userId") Long userId, @Param("muted") Integer muted);
+
+    /**
+     * 更新禁言截止时间
+     */
+    int updateMuteUntil(@Param("groupId") Long groupId, @Param("userId") Long userId, @Param("muteUntil") java.time.LocalDateTime muteUntil);
 }

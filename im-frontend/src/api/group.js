@@ -119,3 +119,10 @@ export const setGroupMuted = (groupId, muted) => {
 export const getGroupMuted = (groupId) => {
   return request.get(`/group/${groupId}/mute`)
 }
+
+export const muteGroupMember = (groupId, userId, muteUntil) => {
+  return request.post(`/group/${groupId}/member/mute`, {
+    userId,
+    muteUntil
+  })
+}

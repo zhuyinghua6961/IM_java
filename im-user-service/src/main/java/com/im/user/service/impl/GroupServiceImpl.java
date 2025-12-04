@@ -847,6 +847,7 @@ public class GroupServiceImpl implements GroupService {
                 vo.setGroupNickname(member.getNickname());
                 vo.setRole(member.getRole());
                 vo.setJoinTime(member.getJoinTime());
+                vo.setMuteUntil(member.getMuteUntil());
                 result.add(vo);
             }
         }
@@ -1245,5 +1246,47 @@ public class GroupServiceImpl implements GroupService {
         
         GroupMember member = groupMemberMapper.selectByGroupIdAndUserId(groupId, userId);
         return member != null && member.getMuted() != null && member.getMuted() == 1;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void muteMember(Long groupId, Long userId, LocalDateTime muteUntil) {
+        Long operatorId = UserContext.getCurrentUserId();
+        log.info("设置群成员禁言，operatorId: {}, groupId: {}, targetUserId: {}, muteUntil: {}", operatorId, groupId, userId, muteUntil);
+
+        if (operatorId == null) {
+            throw new BusinessException(ResultCode.UNAUTHORIZED, "用户未登录");
+        }
+
+        Group group = groupMapper.selectById(groupId);
+        if (group == null || group.getStatus() != 1) {
+            throw new BusinessException(ResultCode.BAD_REQUEST, "群组不存在或已解散");
+        }
+
+        GroupMember operator = groupMemberMapper.selectByGroupIdAndUserId(groupId, operatorId);
+        if (operator == null || operator.getStatus() != 1 || operator.getRole() < 1) {
+            throw new BusinessException(ResultCode.FORBIDDEN, "只有群主或管理员可以禁言成员");
+        }
+
+        GroupMember target = groupMemberMapper.selectByGroupIdAndUserId(groupId, userId);
+        if (target == null || target.getStatus() != 1) {
+            throw new BusinessException(ResultCode.BAD_REQUEST, "目标用户不是群成员");
+        }
+
+        if (target.getRole() != null && target.getRole() == 2) {
+            throw new BusinessException(ResultCode.BAD_REQUEST, "不能禁言群主");
+        }
+
+        if (operator.getRole() != null && operator.getRole() == 1 && target.getRole() != null && target.getRole() == 1) {
+            throw new BusinessException(ResultCode.FORBIDDEN, "管理员不能禁言其他管理员");
+        }
+
+        groupMemberMapper.updateMuteUntil(groupId, userId, muteUntil);
+
+        // 推送禁言/解除禁言通知给目标用户
+        User operatorUser = userMapper.selectById(operatorId);
+        String operatorName = operatorUser != null ? operatorUser.getNickname() : "管理员";
+        webSocketUtil.pushGroupMuteNotification(userId, operatorId, operatorName,
+                groupId, group.getGroupName(), muteUntil);
     }
 }

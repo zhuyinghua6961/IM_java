@@ -432,6 +432,43 @@ public class WebSocketUtil {
             log.error("新成员加入通知推送失败", e);
         }
     }
+
+    /**
+     * 推送群成员禁言/解除禁言通知（只推送给被操作的成员）
+     * @param toUserId 被禁言或解除禁言的用户ID
+     * @param operatorId 操作者ID（管理员/群主）
+     * @param operatorName 操作者昵称
+     * @param groupId 群组ID
+     * @param groupName 群组名称
+     * @param muteUntil 禁言截止时间，null 表示解除禁言
+     */
+    public void pushGroupMuteNotification(Long toUserId, Long operatorId, String operatorName,
+                                          Long groupId, String groupName, java.time.LocalDateTime muteUntil) {
+        try {
+            java.util.Map<String, Object> notification = new java.util.HashMap<>();
+            notification.put("type", "GROUP_MEMBER_MUTED");
+            notification.put("toUserId", toUserId);
+            notification.put("operatorId", operatorId);
+            notification.put("operatorName", operatorName);
+            notification.put("groupId", groupId);
+            notification.put("groupName", groupName);
+            boolean muted = muteUntil != null;
+            notification.put("muted", muted);
+            if (muteUntil != null) {
+                notification.put("muteUntil", muteUntil.toString());
+                notification.put("message", operatorName + " 将你在群组 " + groupName + " 中禁言至 " + muteUntil.toString().replace('T', ' '));
+            } else {
+                notification.put("muteUntil", null);
+                notification.put("message", operatorName + " 已解除你在群组 " + groupName + " 的禁言");
+            }
+            
+            sendNotification(notification);
+            log.info("群成员禁言通知推送成功: toUserId={}, operatorId={}, groupId={}, muted={} ",
+                    toUserId, operatorId, groupId, muted);
+        } catch (Exception e) {
+            log.error("群成员禁言通知推送失败", e);
+        }
+    }
     
     /**
      * 发送通知到消息服务

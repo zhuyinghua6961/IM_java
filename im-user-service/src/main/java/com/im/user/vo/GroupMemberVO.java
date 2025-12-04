@@ -37,4 +37,6 @@ public class GroupMemberVO {
      * 加入时间
      */
     private LocalDateTime joinTime;
+    
+    private LocalDateTime muteUntil;
 }
