@@ -33,4 +33,6 @@ public interface SquarePostMapper {
     long countByUser(@Param("userId") Long userId);
 
     List<SquarePost> selectByIds(@Param("ids") List<Long> ids);
+
+    long sumLikesByUser(@Param("userId") Long userId);
 }

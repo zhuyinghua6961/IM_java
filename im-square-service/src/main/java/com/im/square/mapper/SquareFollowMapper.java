@@ -21,4 +21,8 @@ public interface SquareFollowMapper {
     List<Long> selectFollowerIds(@Param("followeeId") Long followeeId);
 
     List<Long> selectFolloweeIds(@Param("followerId") Long followerId);
+
+    long countFollowers(@Param("followeeId") Long followeeId);
+
+    long countFollowees(@Param("followerId") Long followerId);
 }

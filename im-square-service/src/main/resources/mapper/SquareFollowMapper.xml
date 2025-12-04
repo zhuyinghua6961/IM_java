@@ -48,4 +48,18 @@
           AND status = 1
     </select>
 
+    <select id="countFollowers" resultType="long">
+        SELECT COUNT(*)
+        FROM square_follow
+        WHERE followee_id = #{followeeId}
+          AND status = 1
+    </select>
+
+    <select id="countFollowees" resultType="long">
+        SELECT COUNT(*)
+        FROM square_follow
+        WHERE follower_id = #{followerId}
+          AND status = 1
+    </select>
+
 </mapper>

@@ -34,6 +34,23 @@ export function deleteSquarePost(postId) {
   })
 }
 
+// 个人广场主页信息
+export function getSquareProfile(userId) {
+  return request({
+    url: `/square/profile/${userId}`,
+    method: 'get'
+  })
+}
+
+// 某个用户的广场帖子
+export function getUserSquarePosts(userId, page = 1, size = 20) {
+  return request({
+    url: `/square/user/${userId}/posts`,
+    method: 'get',
+    params: { page, size }
+  })
+}
+
 // 编辑帖子
 export function updateSquarePost(postId, data) {
   return request({

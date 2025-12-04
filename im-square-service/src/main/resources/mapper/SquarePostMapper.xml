@@ -120,6 +120,13 @@
           AND status != 0
     </select>
 
+    <select id="sumLikesByUser" resultType="long">
+        SELECT COALESCE(SUM(like_count), 0)
+        FROM square_post
+        WHERE user_id = #{userId}
+          AND status != 0
+    </select>
+
     <select id="selectByIds" resultMap="BaseResultMap">
         SELECT <include refid="Base_Column_List"/>
         FROM square_post

@@ -3,6 +3,7 @@ package com.im.square.service;
 import com.im.common.vo.PageResult;
 import com.im.square.vo.SquareCommentVO;
 import com.im.square.vo.SquarePostVO;
+import com.im.square.vo.SquareProfileVO;
 
 import java.util.List;
 
@@ -49,6 +50,10 @@ public interface SquareService {
     void deleteComment(Long userId, Long commentId);
 
     PageResult<SquarePostVO> listMyPosts(Long userId, int page, int size);
+
+    SquareProfileVO getUserSquareProfile(Long currentUserId, Long targetUserId);
+
+    PageResult<SquarePostVO> listUserPosts(Long currentUserId, Long targetUserId, int page, int size);
 
     /**
      * 关注某个广场用户（单向关注，不是好友）

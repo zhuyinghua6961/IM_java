@@ -20,6 +20,7 @@ import com.im.square.service.RemoteUserService;
 import com.im.square.service.SquareService;
 import com.im.square.vo.SquareCommentVO;
 import com.im.square.vo.SquarePostVO;
+import com.im.square.vo.SquareProfileVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -198,6 +199,83 @@ public class SquareServiceImpl implements SquareService {
             log.info("缓存广场帖子列表, page={}, size={}, count={}", page, size, posts.size());
         } catch (Exception e) {
             log.warn("写入广场帖子列表缓存失败, page={}, size={}", page, size, e);
+        }
+
+        return PageResult.of(records, total, (long) size, (long) page);
+    }
+
+    @Override
+    public SquareProfileVO getUserSquareProfile(Long currentUserId, Long targetUserId) {
+        if (targetUserId == null) {
+            throw new BusinessException(ResultCode.BAD_REQUEST, "用户ID不能为空");
+        }
+
+        UserProfileDTO profile = remoteUserService.getUserProfile(targetUserId);
+        if (profile == null) {
+            throw new BusinessException(ResultCode.BAD_REQUEST, "用户不存在或不可用");
+        }
+
+        SquareProfileVO vo = new SquareProfileVO();
+        vo.setUserId(targetUserId);
+        vo.setNickname(profile.getNickname());
+        vo.setAvatar(profile.getAvatar());
+
+        long fansCount = followMapper.countFollowers(targetUserId);
+        long followCount = followMapper.countFollowees(targetUserId);
+        long postCount = postMapper.countByUser(targetUserId);
+        long likeCount = postMapper.sumLikesByUser(targetUserId);
+
+        vo.setFansCount(fansCount);
+        vo.setFollowCount(followCount);
+        vo.setPostCount(postCount);
+        vo.setLikeCount(likeCount);
+
+        boolean self = currentUserId != null && Objects.equals(currentUserId, targetUserId);
+        vo.setSelf(self);
+
+        boolean followed = false;
+        if (!self && currentUserId != null) {
+            try {
+                SquareFollow follow = followMapper.selectOne(currentUserId, targetUserId);
+                followed = (follow != null && follow.getStatus() != null && follow.getStatus() == 1);
+            } catch (Exception e) {
+                log.warn("查询广场主页时关注关系失败, viewerId={}, authorId={}", currentUserId, targetUserId, e);
+            }
+        }
+        vo.setFollowed(followed);
+
+        return vo;
+    }
+
+    @Override
+    public PageResult<SquarePostVO> listUserPosts(Long currentUserId, Long targetUserId, int page, int size) {
+        if (targetUserId == null) {
+            throw new BusinessException(ResultCode.BAD_REQUEST, "用户ID不能为空");
+        }
+        if (page <= 0) page = 1;
+        if (size <= 0) size = 20;
+
+        int offset = (page - 1) * size;
+        List<SquarePost> posts = postMapper.selectByUser(targetUserId, offset, size);
+        long total = postMapper.countByUser(targetUserId);
+
+        boolean followed = false;
+        if (currentUserId != null && !Objects.equals(currentUserId, targetUserId)) {
+            try {
+                SquareFollow follow = followMapper.selectOne(currentUserId, targetUserId);
+                followed = (follow != null && follow.getStatus() != null && follow.getStatus() == 1);
+            } catch (Exception e) {
+                log.warn("查询用户广场帖子列表时关注关系失败, viewerId={}, authorId={}", currentUserId, targetUserId, e);
+            }
+        }
+
+        List<SquarePostVO> records = new ArrayList<>();
+        for (SquarePost post : posts) {
+            boolean liked = false;
+            if (currentUserId != null) {
+                liked = likeMapper.countByPostAndUser(post.getId(), currentUserId) > 0;
+            }
+            records.add(toPostVO(post, liked, followed));
         }
 
         return PageResult.of(records, total, (long) size, (long) page);
@@ -410,31 +488,6 @@ public class SquareServiceImpl implements SquareService {
             }
         } catch (Exception e) {
             log.warn("清理广场帖子列表缓存失败", e);
-        }
-    }
-
-    private void pushPostToFollowersFeed(Long authorId, Long postId, LocalDateTime createTime) {
-        try {
-            List<Long> followerIds = followMapper.selectFollowerIds(authorId);
-            if (followerIds == null || followerIds.isEmpty()) {
-                return;
-            }
-            double score = createTime.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
-            for (Long followerId : followerIds) {
-                if (followerId == null) continue;
-                String feedKey = FOLLOW_FEED_KEY_PREFIX + followerId;
-                redisTemplate.opsForZSet().add(feedKey, String.valueOf(postId), score);
-                // 控制每个用户 feed 的最大长度
-                Long size = redisTemplate.opsForZSet().size(feedKey);
-                if (size != null && size > FOLLOW_FEED_MAX_SIZE) {
-                    long removeCount = size - FOLLOW_FEED_MAX_SIZE;
-                    if (removeCount > 0) {
-                        redisTemplate.opsForZSet().removeRange(feedKey, 0, removeCount - 1);
-                    }
-                }
-            }
-        } catch (Exception e) {
-            log.warn("推送广场帖子到粉丝 feed 失败, authorId={}, postId={}", authorId, postId, e);
         }
     }
 

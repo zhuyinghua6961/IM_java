@@ -31,6 +31,11 @@ const routes = [
         component: () => import('@/views/Square.vue')
       },
       {
+        path: '/square/profile/:userId',
+        name: 'SquareProfile',
+        component: () => import('@/views/SquareProfile.vue')
+      },
+      {
         path: '/profile',
         name: 'Profile',
         component: () => import('@/views/Profile.vue')

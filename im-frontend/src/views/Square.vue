@@ -13,6 +13,9 @@
           </span>
         </el-radio-button>
       </el-radio-group>
+      <el-button type="default" plain style="margin-left: 8px;" @click="goProfile(currentUserId)">
+        我的广场主页
+      </el-button>
       <el-button type="primary" :icon="Plus" @click="showPublishDialog = true">
         发布帖子
       </el-button>
@@ -25,11 +28,13 @@
         class="square-item"
       >
         <div class="square-user">
-          <el-avatar :size="40" :src="post.avatar">
+          <el-avatar :size="40" :src="post.avatar" @click="goProfile(post.userId)" style="cursor: pointer;">
             {{ (post.nickname || `用户 ${post.userId}`).charAt(0) }}
           </el-avatar>
           <div class="user-info">
-            <div class="user-name">{{ post.nickname || `用户 ${post.userId}` }}</div>
+            <div class="user-name" @click="goProfile(post.userId)" style="cursor: pointer;">
+              {{ post.nickname || `用户 ${post.userId}` }}
+            </div>
             <div class="post-time">
               <span v-if="post.updateTime && post.updateTime !== post.createTime">
                 编辑于 {{ formatTime(post.updateTime) }}
@@ -363,6 +368,7 @@
 
 <script setup>
 import { ref, onMounted, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Plus, ChatDotRound, Star } from '@element-plus/icons-vue'
 import request from '@/utils/request'
@@ -388,6 +394,7 @@ import {
   updateSquarePost
 } from '@/api/square'
 
+const router = useRouter()
 const userStore = useUserStore()
 const currentUserId = computed(() => userStore.userInfo?.userId || null)
 
@@ -505,6 +512,11 @@ const loadPosts = async (reset = false) => {
   } finally {
     loading.value = false
   }
+}
+
+const goProfile = (userId) => {
+  if (!userId) return
+  router.push(`/square/profile/${userId}`)
 }
 
 const openEditPost = (post) => {

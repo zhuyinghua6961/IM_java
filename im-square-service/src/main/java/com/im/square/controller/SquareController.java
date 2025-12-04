@@ -6,6 +6,7 @@ import com.im.common.vo.Result;
 import com.im.square.service.SquareService;
 import com.im.square.vo.SquareCommentVO;
 import com.im.square.vo.SquarePostVO;
+import com.im.square.vo.SquareProfileVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
@@ -259,6 +260,21 @@ public class SquareController {
         Long userId = UserContext.getCurrentUserId();
         log.info("获取我的关注广场帖子列表: userId={}, page={}, size={}", userId, page, size);
         return squareService.listFollowFeed(userId, page, size);
+    }
+
+    @GetMapping("/profile/{userId}")
+    public Result<SquareProfileVO> getUserProfile(@PathVariable("userId") Long userId) {
+        Long currentUserId = UserContext.getCurrentUserId();
+        SquareProfileVO vo = squareService.getUserSquareProfile(currentUserId, userId);
+        return Result.success(vo);
+    }
+
+    @GetMapping("/user/{userId}/posts")
+    public PageResult<SquarePostVO> listUserPosts(@PathVariable("userId") Long userId,
+                                                  @RequestParam(name = "page", defaultValue = "1") Integer page,
+                                                  @RequestParam(name = "size", defaultValue = "20") Integer size) {
+        Long currentUserId = UserContext.getCurrentUserId();
+        return squareService.listUserPosts(currentUserId, userId, page, size);
     }
 
     /**
