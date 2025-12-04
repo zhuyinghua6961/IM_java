@@ -1,7 +1,9 @@
 package com.im.user.service.impl;
 
+import com.alibaba.fastjson2.JSON;
 import com.im.common.enums.ResultCode;
 import com.im.common.exception.BusinessException;
+import com.im.user.constant.RedisConstant;
 import com.im.user.context.UserContext;
 import com.im.user.dto.GroupDTO;
 import com.im.user.entity.Group;
@@ -19,6 +21,7 @@ import com.im.user.vo.GroupMemberVO;
 import com.im.user.vo.GroupVO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,6 +30,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Service
@@ -49,6 +53,9 @@ public class GroupServiceImpl implements GroupService {
     
     @Autowired
     private com.im.user.utils.WebSocketUtil webSocketUtil;
+
+    @Autowired
+    private StringRedisTemplate redisTemplate;
     
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -182,7 +189,14 @@ public class GroupServiceImpl implements GroupService {
         groupVO.setMaxMembers(maxMembers);
         groupVO.setStatus(1);
         groupVO.setCreateTime(group.getCreateTime());
-        
+
+        // 清理创建者的群组列表缓存
+        try {
+            redisTemplate.delete(RedisConstant.getGroupListKey(ownerId));
+        } catch (Exception e) {
+            log.warn("清理群组列表缓存失败, ownerId={}", ownerId, e);
+        }
+
         return groupVO;
     }
 
@@ -193,6 +207,20 @@ public class GroupServiceImpl implements GroupService {
         if(userId == null) {
             throw new BusinessException(ResultCode.UNAUTHORIZED, "用户未登录");
         }
+        String key = RedisConstant.getGroupListKey(userId);
+        try {
+            String cache = redisTemplate.opsForValue().get(key);
+            if (cache != null && !cache.isEmpty()) {
+                List<GroupVO> cachedList = JSON.parseArray(cache, GroupVO.class);
+                // 温和刷新 TTL
+                redisTemplate.expire(key, RedisConstant.FRIEND_GROUP_LIST_EXPIRE_MINUTES, TimeUnit.MINUTES);
+                log.info("命中群组列表缓存，userId: {}, size: {}", userId, cachedList.size());
+                return cachedList;
+            }
+        } catch (Exception e) {
+            log.warn("读取或解析群组列表缓存失败，降级为数据库查询，userId: {}", userId, e);
+        }
+
         List<Group> groups = groupMapper.selectByUserId(userId);
         if (groups == null || groups.isEmpty()) {
             return new ArrayList<>();
@@ -216,6 +244,20 @@ public class GroupServiceImpl implements GroupService {
             
             groupVOList.add(groupVO);
         }
+
+        try {
+            String json = JSON.toJSONString(groupVOList);
+            redisTemplate.opsForValue().set(
+                    key,
+                    json,
+                    RedisConstant.FRIEND_GROUP_LIST_EXPIRE_MINUTES,
+                    TimeUnit.MINUTES
+            );
+            log.info("缓存群组列表，userId: {}, size: {}", userId, groupVOList.size());
+        } catch (Exception e) {
+            log.warn("写入群组列表缓存失败，userId: {}", userId, e);
+        }
+
         return groupVOList;
     }
 
@@ -393,6 +435,15 @@ public class GroupServiceImpl implements GroupService {
                     group.getGroupName()
                 );
             }
+
+            // 清理直接加入成员的群组列表缓存
+            try {
+                for (GroupMember member : directJoinMembers) {
+                    redisTemplate.delete(RedisConstant.getGroupListKey(member.getUserId()));
+                }
+            } catch (Exception e) {
+                log.warn("清理群组列表缓存失败(直接加入成员), groupId={}", groupId, e);
+            }
         }
         
         // 6. 批量插入邀请记录
@@ -508,6 +559,13 @@ public class GroupServiceImpl implements GroupService {
             groupInvitationMapper.updateById(invitation);
             
             log.info("用户同意加入群组，userId: {}, groupId: {}", userId, invitation.getGroupId());
+
+            // 清理当前用户的群组列表缓存
+            try {
+                redisTemplate.delete(RedisConstant.getGroupListKey(userId));
+            } catch (Exception e) {
+                log.warn("清理群组列表缓存失败(同意邀请), userId={}, groupId={}", userId, invitation.getGroupId(), e);
+            }
             
             // 通知群主和管理员有新成员加入
             List<GroupMember> admins = groupMemberMapper.selectAdminsByGroupId(invitation.getGroupId());
@@ -638,6 +696,13 @@ public class GroupServiceImpl implements GroupService {
             }
         }
         
+        // 清理当前用户的群组列表缓存
+        try {
+            redisTemplate.delete(RedisConstant.getGroupListKey(userId));
+        } catch (Exception e) {
+            log.warn("清理群组列表缓存失败(退出群组), userId={}, groupId={}", userId, groupId, e);
+        }
+
         log.info("用户退出群组成功，userId: {}, groupId: {}, 已通知管理员数量: {}", 
                 userId, groupId, admins.size());
     }

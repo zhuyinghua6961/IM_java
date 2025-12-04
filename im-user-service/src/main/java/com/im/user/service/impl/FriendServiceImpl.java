@@ -1,7 +1,9 @@
 package com.im.user.service.impl;
 
+import com.alibaba.fastjson2.JSON;
 import com.im.common.enums.ResultCode;
 import com.im.common.exception.BusinessException;
+import com.im.user.constant.RedisConstant;
 import com.im.user.context.UserContext;
 import com.im.user.dto.FriendRequestDTO;
 import com.im.user.dto.FriendRemarkDTO;
@@ -19,12 +21,14 @@ import com.im.user.vo.BlacklistVO;
 import com.im.user.vo.FriendVO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Service
@@ -44,6 +48,9 @@ public class FriendServiceImpl implements FriendService {
     
     @Autowired
     private BlacklistMapper blacklistMapper;
+
+    @Autowired
+    private StringRedisTemplate redisTemplate;
     
     @Override
     public List<FriendVO> getFriendList() {
@@ -51,6 +58,20 @@ public class FriendServiceImpl implements FriendService {
         Long userId = UserContext.getCurrentUserId();
         log.info("获取好友列表，userId: {}", userId);
         
+        String key = RedisConstant.getFriendListKey(userId);
+        try {
+            String cache = redisTemplate.opsForValue().get(key);
+            if (cache != null && !cache.isEmpty()) {
+                List<FriendVO> cachedList = JSON.parseArray(cache, FriendVO.class);
+                // 温和刷新 TTL
+                redisTemplate.expire(key, RedisConstant.FRIEND_GROUP_LIST_EXPIRE_MINUTES, TimeUnit.MINUTES);
+                log.info("命中好友列表缓存，userId: {}, size: {}", userId, cachedList.size());
+                return cachedList;
+            }
+        } catch (Exception e) {
+            log.warn("读取或解析好友列表缓存失败，降级为数据库查询，userId: {}", userId, e);
+        }
+
         // 查询好友列表（包含用户信息）
         List<Map<String, Object>> friendList = friendMapper.selectFriendListWithUserInfo(userId);
         
@@ -67,6 +88,19 @@ public class FriendServiceImpl implements FriendService {
             vo.setRemark((String) map.get("remark"));
             vo.setOnline(false); // TODO: 后续实现在线状态
             result.add(vo);
+        }
+
+        try {
+            String json = JSON.toJSONString(result);
+            redisTemplate.opsForValue().set(
+                    key,
+                    json,
+                    RedisConstant.FRIEND_GROUP_LIST_EXPIRE_MINUTES,
+                    TimeUnit.MINUTES
+            );
+            log.info("缓存好友列表，userId: {}, size: {}", userId, result.size());
+        } catch (Exception e) {
+            log.warn("写入好友列表缓存失败，userId: {}", userId, e);
         }
         
         log.info("获取好友列表成功，数量: {}", result.size());
@@ -223,6 +257,14 @@ public class FriendServiceImpl implements FriendService {
                 nickname, 
                 true
             );
+
+            // 清理双方好友列表缓存
+            try {
+                redisTemplate.delete(RedisConstant.getFriendListKey(request.getFromUserId()));
+                redisTemplate.delete(RedisConstant.getFriendListKey(request.getToUserId()));
+            } catch (Exception e) {
+                log.warn("清理好友列表缓存失败, fromUserId={}, toUserId={}", request.getFromUserId(), request.getToUserId(), e);
+            }
             
         } else if (dto.getStatus() == 2) {
             // 拒绝好友申请
@@ -277,6 +319,14 @@ public class FriendServiceImpl implements FriendService {
         }
         
         log.info("删除好友成功，双向关系已解除");
+
+        // 清理双方好友列表缓存
+        try {
+            redisTemplate.delete(RedisConstant.getFriendListKey(userId));
+            redisTemplate.delete(RedisConstant.getFriendListKey(friendId));
+        } catch (Exception e) {
+            log.warn("清理好友列表缓存失败, userId={}, friendId={}", userId, friendId, e);
+        }
     }
 
     @Override
@@ -303,6 +353,13 @@ public class FriendServiceImpl implements FriendService {
         friendMapper.updateById(friendship);
 
         log.info("更新好友备注成功，userId: {}, friendId: {}", userId, friendId);
+
+        // 清理当前用户好友列表缓存
+        try {
+            redisTemplate.delete(RedisConstant.getFriendListKey(userId));
+        } catch (Exception e) {
+            log.warn("清理好友列表缓存失败, userId={}", userId, e);
+        }
     }
     
     @Override
