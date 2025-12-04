@@ -37,13 +37,25 @@
           <h3 v-if="post.title" class="post-title">{{ post.title }}</h3>
           <p class="post-text">{{ post.content }}</p>
           <div v-if="post.images && post.images.length" class="post-images">
-            <el-image
-              v-for="(img, index) in post.images"
+            <div
+              v-for="(img, index) in getDisplayImages(post)"
               :key="index"
-              :src="img"
-              fit="cover"
-              class="post-image"
-            />
+              class="post-image-wrapper"
+            >
+              <el-image
+                :src="img"
+                fit="cover"
+                class="post-image"
+                @click.stop="openImagePreview(img)"
+              />
+              <div
+                v-if="isImageOverlayVisible(post, index)"
+                class="post-image-overlay"
+                @click.stop="toggleExpandImages(post)"
+              >
+                +{{ post.images.length - 9 }}
+              </div>
+            </div>
           </div>
         </div>
 
@@ -147,13 +159,44 @@
             placeholder="分享点什么..."
           />
         </el-form-item>
-        <el-form-item label="图片">
-          <el-input
-            v-model="publishForm.imagesText"
-            type="textarea"
-            :rows="2"
-            placeholder="可选，输入图片 URL，多个用换行分隔"
-          />
+        <el-form-item label="图片/视频">
+          <div class="media-upload">
+            <el-upload
+              class="image-upload"
+              action="/api/files/upload/image"
+              list-type="picture-card"
+              :file-list="imageFileList"
+              :limit="18"
+              :on-success="handleImageUploadSuccess"
+              :on-remove="handleImageRemove"
+              :before-upload="beforeImageUpload"
+              :http-request="uploadImageRequest"
+              :show-file-list="true"
+              :multiple="true"
+              accept="image/*"
+              :disabled="isImageUploadDisabled"
+            >
+              <el-icon><Plus /></el-icon>
+            </el-upload>
+            <el-upload
+              class="video-upload"
+              action="/api/files/upload/video"
+              :file-list="videoFileList"
+              :limit="1"
+              :on-success="handleVideoUploadSuccess"
+              :on-remove="handleVideoRemove"
+              :before-upload="beforeVideoUpload"
+              :http-request="uploadVideoRequest"
+              :show-file-list="true"
+              accept="video/*"
+              :disabled="isVideoUploadDisabled"
+            >
+              <el-button type="primary" plain>上传视频（可选，最多 1 个）</el-button>
+            </el-upload>
+            <div class="media-tip">
+              已选择 {{ imageUrls.length }} 张图片{{ videoUrl ? '，1 个视频' : '' }}，最多图片和视频合计 18 个
+            </div>
+          </div>
         </el-form-item>
         <el-form-item label="范围">
           <el-radio-group v-model="publishForm.visibleType">
@@ -233,6 +276,18 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <!-- 图片预览对话框 -->
+    <el-dialog
+      v-model="previewVisible"
+      width="400px"
+      align-center
+      class="image-preview-dialog"
+    >
+      <div class="image-preview-square">
+        <img :src="previewImageUrl" alt="preview" />
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -240,6 +295,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Plus, ChatDotRound, Star } from '@element-plus/icons-vue'
+import request from '@/utils/request'
 import { useUserStore } from '@/stores/user'
 import { getFriendList } from '@/api/friend'
 import {
@@ -269,14 +325,38 @@ const size = ref(10)
 const hasMore = ref(true)
 const loading = ref(false)
 
+// 图片九宫格展开状态
+const expandedPostId = ref(null)
+
 const showPublishDialog = ref(false)
 const publishing = ref(false)
 const publishForm = ref({
   title: '',
   content: '',
-  imagesText: '',
   visibleType: 0,
   excludeUserIds: []
+})
+
+// 媒体上传状态
+const imageUrls = ref([])
+const videoUrl = ref('')
+const imageFileList = ref([])
+const videoFileList = ref([])
+
+const totalMediaCount = computed(() => {
+  return imageUrls.value.length + (videoUrl.value ? 1 : 0)
+})
+
+const isImageUploadDisabled = computed(() => {
+  // 如果已有视频，则图片数量 + 1 不得超过 18
+  const maxImages = videoUrl.value ? 17 : 18
+  return imageUrls.value.length >= maxImages
+})
+
+const isVideoUploadDisabled = computed(() => {
+  // 只能有 1 个视频，且总数不能超过 18
+  if (videoUrl.value) return true
+  return imageUrls.value.length >= 18
 })
 
 const friendOptions = ref([])
@@ -298,6 +378,10 @@ const notifySize = ref(20)
 const notifyHasMore = ref(true)
 const notifyLoading = ref(false)
 const notifyUnread = ref(0)
+
+// 图片预览
+const previewVisible = ref(false)
+const previewImageUrl = ref('')
 
 const unreadNotifications = computed(() =>
   notifications.value.filter(item => item.read === 0)
@@ -336,6 +420,40 @@ const loadPosts = async (reset = false) => {
   } finally {
     loading.value = false
   }
+}
+
+const openImagePreview = (url) => {
+  if (!url) return
+  previewImageUrl.value = url
+  previewVisible.value = true
+}
+
+const getDisplayImages = (post) => {
+  const images = post.images || []
+  if (expandedPostId.value === post.postId) {
+    return images
+  }
+  if (images.length <= 9) {
+    return images
+  }
+  return images.slice(0, 9)
+}
+
+const isImageOverlayVisible = (post, index) => {
+  const images = post.images || []
+  if (images.length <= 9) {
+    return false
+  }
+  if (expandedPostId.value === post.postId) {
+    return false
+  }
+  // 只在第9张（索引8）显示 +N 覆盖
+  return index === 8
+}
+
+const toggleExpandImages = (post) => {
+  if (!post || !post.postId) return
+  expandedPostId.value = expandedPostId.value === post.postId ? null : post.postId
 }
 
 const handleMarkAllRead = async () => {
@@ -413,32 +531,133 @@ const handlePublish = async () => {
     ElMessage.warning('内容不能为空')
     return
   }
+
+  const total = totalMediaCount.value
+  if (total > 18) {
+    ElMessage.warning('图片和视频总数不能超过 18 个')
+    return
+  }
+
   publishing.value = true
   try {
-    const images = publishForm.value.imagesText
-      ? publishForm.value.imagesText
-          .split(/\n|,/) // 换行或逗号分隔
-          .map(s => s.trim())
-          .filter(Boolean)
-      : []
     await publishSquarePost({
       title: publishForm.value.title || null,
       content: publishForm.value.content,
-      images,
-      video: null,
+      images: imageUrls.value,
+      video: videoUrl.value || null,
       tags: [],
       visibleType: publishForm.value.visibleType,
       excludeUserIds: publishForm.value.excludeUserIds || []
     })
     ElMessage.success('发布成功')
     showPublishDialog.value = false
-    publishForm.value = { title: '', content: '', imagesText: '', visibleType: 0, excludeUserIds: [] }
+    publishForm.value = { title: '', content: '', visibleType: 0, excludeUserIds: [] }
+    imageUrls.value = []
+    videoUrl.value = ''
+    imageFileList.value = []
+    videoFileList.value = []
     await loadPosts(true)
   } catch (error) {
     console.error('发布帖子失败:', error)
   } finally {
     publishing.value = false
   }
+}
+
+// 图片上传相关
+const uploadImageRequest = async (options) => {
+  const { file, onSuccess, onError } = options
+  const formData = new FormData()
+  formData.append('file', file)
+  try {
+    const res = await request.post('/files/upload/image', formData)
+    const url = res.data?.url
+    if (!url) {
+      throw new Error('上传图片失败：未返回URL')
+    }
+    imageUrls.value.push(url)
+    file.url = url
+    onSuccess(res, file)
+  } catch (error) {
+    console.error('上传图片失败:', error)
+    ElMessage.error('上传图片失败')
+    onError(error)
+  }
+}
+
+const handleImageUploadSuccess = (response, file, fileList) => {
+  imageFileList.value = fileList
+}
+
+const handleImageRemove = (file, fileList) => {
+  const url = file?.response?.data?.url || file.url
+  if (url) {
+    imageUrls.value = imageUrls.value.filter(u => u !== url)
+  }
+  imageFileList.value = fileList
+}
+
+const beforeImageUpload = (file) => {
+  const maxImages = videoUrl.value ? 17 : 18
+  if (imageUrls.value.length >= maxImages) {
+    ElMessage.warning(`最多只能上传 ${maxImages} 张图片`)
+    return false
+  }
+
+  // 只允许图片类型
+  if (!file.type || !file.type.startsWith('image/')) {
+    ElMessage.warning('只能上传图片文件')
+    return false
+  }
+  return true
+}
+
+// 视频上传相关
+const uploadVideoRequest = async (options) => {
+  const { file, onSuccess, onError } = options
+  const formData = new FormData()
+  formData.append('file', file)
+  try {
+    const res = await request.post('/files/upload/video', formData)
+    const url = res.data?.url
+    if (!url) {
+      throw new Error('上传视频失败：未返回URL')
+    }
+    videoUrl.value = url
+    file.url = url
+    onSuccess(res, file)
+  } catch (error) {
+    console.error('上传视频失败:', error)
+    ElMessage.error('上传视频失败')
+    onError(error)
+  }
+}
+
+const handleVideoUploadSuccess = (response, file, fileList) => {
+  videoFileList.value = fileList
+}
+
+const handleVideoRemove = (file, fileList) => {
+  videoUrl.value = ''
+  videoFileList.value = fileList
+}
+
+const beforeVideoUpload = (file) => {
+  if (videoUrl.value) {
+    ElMessage.warning('最多只能上传 1 个视频')
+    return false
+  }
+  if (imageUrls.value.length >= 18) {
+    ElMessage.warning('图片和视频总数不能超过 18 个')
+    return false
+  }
+
+  // 只允许视频类型
+  if (!file.type || !file.type.startsWith('video/')) {
+    ElMessage.warning('只能上传视频文件')
+    return false
+  }
+  return true
 }
 
 const handleFriendSelectVisible = (visible) => {
@@ -645,10 +864,37 @@ onMounted(() => {
   margin-top: 10px;
 }
 
-.post-image {
+.post-image-wrapper {
+  position: relative;
   width: 100%;
-  height: 120px;
+  padding-bottom: 100%; /* 正方形 */
+  overflow: hidden;
   border-radius: 4px;
+}
+
+.post-image {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  cursor: pointer;
+}
+
+.post-image-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 20px;
+  font-weight: 600;
 }
 
 .square-actions {
@@ -737,5 +983,25 @@ onMounted(() => {
   padding: 0 6px;
   border-radius: 10px;
   background: #f0f2f5;
+}
+
+.image-preview-dialog .el-dialog__body {
+  padding: 0;
+}
+
+.image-preview-square {
+  position: relative;
+  width: 100%;
+  padding-bottom: 100%; /* 正方形预览区域 */
+  overflow: hidden;
+}
+
+.image-preview-square img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 </style>

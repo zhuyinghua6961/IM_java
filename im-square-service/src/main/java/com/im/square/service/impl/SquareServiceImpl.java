@@ -20,6 +20,7 @@ import com.im.square.vo.SquareCommentVO;
 import com.im.square.vo.SquarePostVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -27,6 +28,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Service
@@ -40,6 +43,11 @@ public class SquareServiceImpl implements SquareService {
     private final RemoteUserService remoteUserService;
     private final RemoteSquareNotificationService remoteSquareNotificationService;
     private final FriendRelationMapper friendRelationMapper;
+
+    private final StringRedisTemplate redisTemplate;
+
+    private static final String PUBLIC_POST_LIST_KEY_PREFIX = "square:post:list:page:";
+    private static final long PUBLIC_POST_LIST_EXPIRE_MINUTES = 5L;
 
     @Override
     public Long publishPost(Long userId,
@@ -55,6 +63,14 @@ public class SquareServiceImpl implements SquareService {
         }
         // 文本内容审核
         contentReviewService.reviewText(content);
+
+        // 媒体数量校验：图片数量 + (是否有视频) 不得超过 18
+        int imageCount = (images == null) ? 0 : images.size();
+        boolean hasVideo = video != null && !video.trim().isEmpty();
+        int totalMedia = imageCount + (hasVideo ? 1 : 0);
+        if (totalMedia > 18) {
+            throw new BusinessException(ResultCode.BAD_REQUEST, "图片和视频总数不能超过 18 个");
+        }
 
         LocalDateTime now = LocalDateTime.now();
 
@@ -79,6 +95,8 @@ public class SquareServiceImpl implements SquareService {
 
         postMapper.insert(post);
         log.info("发布广场帖子成功, userId={}, postId={}", userId, post.getId());
+
+        clearPublicPostListCache();
         return post.getId();
     }
 
@@ -88,8 +106,32 @@ public class SquareServiceImpl implements SquareService {
         if (size <= 0) size = 20;
         int offset = (page - 1) * size;
 
-        List<SquarePost> posts = postMapper.selectPublicList(offset, size);
-        long total = postMapper.countPublic();
+        String key = PUBLIC_POST_LIST_KEY_PREFIX + page + ":" + size;
+        List<SquarePost> posts;
+        long total;
+
+        try {
+            String cache = redisTemplate.opsForValue().get(key);
+            if (cache != null && !cache.isEmpty()) {
+                CachedPostPage cached = JSON.parseObject(cache, CachedPostPage.class);
+                if (cached != null && cached.getPosts() != null) {
+                    posts = cached.getPosts();
+                    total = cached.getTotal();
+                    redisTemplate.expire(key, PUBLIC_POST_LIST_EXPIRE_MINUTES, TimeUnit.MINUTES);
+                    log.info("命中广场帖子列表缓存, page={}, size={}, count={}", page, size, posts.size());
+                } else {
+                    posts = postMapper.selectPublicList(offset, size);
+                    total = postMapper.countPublic();
+                }
+            } else {
+                posts = postMapper.selectPublicList(offset, size);
+                total = postMapper.countPublic();
+            }
+        } catch (Exception e) {
+            log.warn("读取或解析广场帖子列表缓存失败，降级为数据库查询, page={}, size={}", page, size, e);
+            posts = postMapper.selectPublicList(offset, size);
+            total = postMapper.countPublic();
+        }
 
         List<SquarePostVO> records = new ArrayList<>();
         for (SquarePost post : posts) {
@@ -101,6 +143,17 @@ public class SquareServiceImpl implements SquareService {
                 liked = likeMapper.countByPostAndUser(post.getId(), currentUserId) > 0;
             }
             records.add(toPostVO(post, liked));
+        }
+
+        try {
+            CachedPostPage toCache = new CachedPostPage();
+            toCache.setPosts(posts);
+            toCache.setTotal(total);
+            String json = JSON.toJSONString(toCache);
+            redisTemplate.opsForValue().set(key, json, PUBLIC_POST_LIST_EXPIRE_MINUTES, TimeUnit.MINUTES);
+            log.info("缓存广场帖子列表, page={}, size={}, count={}", page, size, posts.size());
+        } catch (Exception e) {
+            log.warn("写入广场帖子列表缓存失败, page={}, size={}", page, size, e);
         }
 
         return PageResult.of(records, total, (long) size, (long) page);
@@ -132,6 +185,7 @@ public class SquareServiceImpl implements SquareService {
         int rows = postMapper.softDelete(postId, userId);
         if (rows > 0) {
             log.info("用户删除广场帖子成功, userId={}, postId={}", userId, postId);
+            clearPublicPostListCache();
         }
     }
 
@@ -154,6 +208,7 @@ public class SquareServiceImpl implements SquareService {
         postMapper.updateCounters(postId, 1, 0);
         // 发送点赞通知
         remoteSquareNotificationService.sendLikeNotification(post, userId);
+        clearPublicPostListCache();
     }
 
     @Override
@@ -167,6 +222,7 @@ public class SquareServiceImpl implements SquareService {
         if (rows > 0) {
             postMapper.updateCounters(postId, -1, 0);
         }
+        clearPublicPostListCache();
     }
 
     @Override
@@ -227,6 +283,7 @@ public class SquareServiceImpl implements SquareService {
         postMapper.updateCounters(postId, 0, 1);
         // 发送评论通知
         remoteSquareNotificationService.sendCommentNotification(post, userId, comment.getId(), content);
+        clearPublicPostListCache();
         return comment.getId();
     }
 
@@ -242,6 +299,39 @@ public class SquareServiceImpl implements SquareService {
         int rows = commentMapper.softDelete(commentId, userId);
         if (rows > 0) {
             postMapper.updateCounters(comment.getPostId(), 0, -1);
+            clearPublicPostListCache();
+        }
+    }
+
+    private void clearPublicPostListCache() {
+        try {
+            Set<String> keys = redisTemplate.keys(PUBLIC_POST_LIST_KEY_PREFIX + "*");
+            if (keys != null && !keys.isEmpty()) {
+                redisTemplate.delete(keys);
+            }
+        } catch (Exception e) {
+            log.warn("清理广场帖子列表缓存失败", e);
+        }
+    }
+
+    private static class CachedPostPage {
+        private List<SquarePost> posts;
+        private long total;
+
+        public List<SquarePost> getPosts() {
+            return posts;
+        }
+
+        public void setPosts(List<SquarePost> posts) {
+            this.posts = posts;
+        }
+
+        public long getTotal() {
+            return total;
+        }
+
+        public void setTotal(long total) {
+            this.total = total;
         }
     }
 
