@@ -84,3 +84,20 @@ export function getMySquarePosts(page = 1, size = 20) {
     params: { page, size }
   })
 }
+
+// 我的广场消息列表
+export function getSquareNotifications(page = 1, size = 20) {
+  return request({
+    url: '/notification/square',
+    method: 'get',
+    params: { page, size }
+  })
+}
+
+// 将广场消息标记为已读
+export function markSquareNotificationsRead() {
+  return request({
+    url: '/notification/square/read',
+    method: 'post'
+  })
+}

@@ -12,6 +12,7 @@ import com.im.square.mapper.SquareCommentMapper;
 import com.im.square.mapper.SquareLikeMapper;
 import com.im.square.mapper.SquarePostMapper;
 import com.im.square.service.ContentReviewService;
+import com.im.square.service.RemoteSquareNotificationService;
 import com.im.square.service.RemoteUserService;
 import com.im.square.service.SquareService;
 import com.im.square.vo.SquareCommentVO;
@@ -36,6 +37,7 @@ public class SquareServiceImpl implements SquareService {
     private final SquareCommentMapper commentMapper;
     private final ContentReviewService contentReviewService;
     private final RemoteUserService remoteUserService;
+    private final RemoteSquareNotificationService remoteSquareNotificationService;
 
     @Override
     public Long publishPost(Long userId, String title, String content, List<String> images, String video, List<String> tags) {
@@ -132,6 +134,8 @@ public class SquareServiceImpl implements SquareService {
         like.setCreateTime(LocalDateTime.now());
         likeMapper.insert(like);
         postMapper.updateCounters(postId, 1, 0);
+        // 发送点赞通知
+        remoteSquareNotificationService.sendLikeNotification(post, userId);
     }
 
     @Override
@@ -203,6 +207,8 @@ public class SquareServiceImpl implements SquareService {
         commentMapper.insert(comment);
 
         postMapper.updateCounters(postId, 0, 1);
+        // 发送评论通知
+        remoteSquareNotificationService.sendCommentNotification(post, userId, comment.getId(), content);
         return comment.getId();
     }
 

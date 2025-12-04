@@ -49,3 +49,21 @@ CREATE TABLE `square_comment` (
   KEY `idx_post_time` (`post_id`,`create_time`),
   KEY `idx_user` (`user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='广场评论表';
+
+-- 广场通知表
+DROP TABLE IF EXISTS `square_notification`;
+CREATE TABLE `square_notification` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `user_id` BIGINT NOT NULL COMMENT '接收通知的用户ID',
+  `post_id` BIGINT NOT NULL COMMENT '帖子ID',
+  `comment_id` BIGINT DEFAULT NULL COMMENT '评论ID',
+  `actor_id` BIGINT NOT NULL COMMENT '触发动作的用户ID',
+  `action_type` VARCHAR(20) NOT NULL COMMENT '动作类型 LIKE/COMMENT',
+  `message` VARCHAR(255) NOT NULL COMMENT '通知文案',
+  `extra` TEXT DEFAULT NULL COMMENT '扩展信息(JSON)',
+  `read` TINYINT DEFAULT 0 COMMENT '是否已读 0-未读 1-已读',
+  `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  PRIMARY KEY (`id`),
+  KEY `idx_user_time` (`user_id`, `create_time`),
+  KEY `idx_post` (`post_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='广场通知表';

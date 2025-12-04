@@ -2,12 +2,22 @@
   <div class="square-container">
     <div class="square-header">
       <h2>广场</h2>
+      <el-radio-group v-model="activeTab" size="small" @change="handleTabChange">
+        <el-radio-button label="all">全部</el-radio-button>
+        <el-radio-button label="mine">我的帖子</el-radio-button>
+        <el-radio-button label="notify">
+          <span class="tab-label">
+            我的广场消息
+            <span v-if="notifyUnread > 0" class="unread-dot">{{ notifyUnread }}</span>
+          </span>
+        </el-radio-button>
+      </el-radio-group>
       <el-button type="primary" :icon="Plus" @click="showPublishDialog = true">
         发布帖子
       </el-button>
     </div>
 
-    <el-scrollbar class="square-list">
+    <el-scrollbar v-if="activeTab !== 'notify'" class="square-list">
       <div
         v-for="post in posts"
         :key="post.postId"
@@ -49,6 +59,14 @@
           >
             {{ post.liked ? '已赞' : '点赞' }} {{ post.likeCount || 0 }}
           </el-button>
+          <el-button
+            v-if="String(post.userId) === String(currentUserId)"
+            text
+            type="danger"
+            @click="handleDeletePost(post)"
+          >
+            删除
+          </el-button>
         </div>
       </div>
 
@@ -58,6 +76,34 @@
 
       <div class="load-more" v-if="hasMore">
         <el-button :loading="loading" @click="loadMore">加载更多</el-button>
+      </div>
+    </el-scrollbar>
+
+    <!-- 我的广场消息 -->
+    <el-scrollbar v-else class="square-list">
+      <div class="notify-actions" v-if="notifications.length > 0">
+        <el-button text size="small" @click="handleMarkAllRead">全部标记为已读</el-button>
+      </div>
+      <div
+        v-for="item in notifications"
+        :key="item.id"
+        class="notify-item"
+        :class="{ 'notify-item--unread': item.read === 0 }"
+      >
+        <div class="notify-message">{{ item.message }}</div>
+        <div class="notify-meta">
+          <span class="notify-time">{{ formatTime(item.createTime) }}</span>
+          <span class="notify-type" v-if="item.actionType === 'LIKE'">点赞</span>
+          <span class="notify-type" v-else-if="item.actionType === 'COMMENT'">评论</span>
+        </div>
+      </div>
+
+      <div v-if="!notifyLoading && notifications.length === 0" class="empty-tip">
+        暂无广场消息
+      </div>
+
+      <div class="load-more" v-if="notifyHasMore">
+        <el-button :loading="notifyLoading" @click="loadMoreNotifications">加载更多</el-button>
       </div>
     </el-scrollbar>
 
@@ -105,6 +151,15 @@
           <div class="comment-header">
             <span class="comment-user">{{ comment.nickname || `用户 ${comment.userId}` }}</span>
             <span class="comment-time">{{ comment.createTime }}</span>
+            <el-button
+              v-if="String(comment.userId) === String(currentUserId)"
+              text
+              type="danger"
+              size="small"
+              @click="handleDeleteComment(comment)"
+            >
+              删除
+            </el-button>
           </div>
           <div class="comment-content">{{ comment.content }}</div>
         </div>
@@ -134,17 +189,28 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Plus, ChatDotRound, Star } from '@element-plus/icons-vue'
+import { useUserStore } from '@/stores/user'
 import {
   publishSquarePost,
   getSquarePosts,
+  getMySquarePosts,
+  deleteSquarePost,
   likeSquarePost,
   unlikeSquarePost,
   getSquareComments,
-  addSquareComment
+  addSquareComment,
+  deleteSquareComment,
+  getSquareNotifications,
+  markSquareNotificationsRead
 } from '@/api/square'
+
+const userStore = useUserStore()
+const currentUserId = computed(() => userStore.userInfo?.userId || null)
+
+const activeTab = ref('all')
 
 const posts = ref([])
 const page = ref(1)
@@ -169,6 +235,21 @@ const commentLoading = ref(false)
 const commentContent = ref('')
 const commentSubmitting = ref(false)
 
+// 广场通知
+const notifications = ref([])
+const notifyPage = ref(1)
+const notifySize = ref(20)
+const notifyHasMore = ref(true)
+const notifyLoading = ref(false)
+const notifyUnread = ref(0)
+
+const formatTime = (time) => {
+  if (!time) return ''
+  const d = new Date(time)
+  if (Number.isNaN(d.getTime())) return time
+  return d.toLocaleString()
+}
+
 const loadPosts = async (reset = false) => {
   if (loading.value) return
   loading.value = true
@@ -178,7 +259,8 @@ const loadPosts = async (reset = false) => {
       posts.value = []
       hasMore.value = true
     }
-    const res = await getSquarePosts(page.value, size.value)
+    const api = activeTab.value === 'mine' ? getMySquarePosts : getSquarePosts
+    const res = await api(page.value, size.value)
     const data = res.data || {}
     const records = data.records || []
     if (records.length < size.value) {
@@ -189,6 +271,56 @@ const loadPosts = async (reset = false) => {
     console.error('加载广场帖子失败:', error)
   } finally {
     loading.value = false
+  }
+}
+
+const handleMarkAllRead = async () => {
+  try {
+    await markSquareNotificationsRead()
+    notifyUnread.value = 0
+    notifications.value = notifications.value.map(item => ({ ...item, read: 1 }))
+  } catch (error) {
+    console.error('标记广场消息已读失败:', error)
+  }
+}
+
+const loadNotifications = async (reset = false) => {
+  if (notifyLoading.value) return
+  notifyLoading.value = true
+  try {
+    if (reset) {
+      notifyPage.value = 1
+      notifications.value = []
+      notifyHasMore.value = true
+    }
+    const res = await getSquareNotifications(notifyPage.value, notifySize.value)
+    const data = res.data || {}
+    const records = data.records || []
+    if (typeof data.unread === 'number') {
+      notifyUnread.value = data.unread
+    }
+    if (records.length < notifySize.value) {
+      notifyHasMore.value = false
+    }
+    notifications.value = notifications.value.concat(records)
+  } catch (error) {
+    console.error('加载广场通知失败:', error)
+  } finally {
+    notifyLoading.value = false
+  }
+}
+
+const loadMoreNotifications = () => {
+  if (!notifyHasMore.value) return
+  notifyPage.value += 1
+  loadNotifications()
+}
+
+const handleTabChange = () => {
+  if (activeTab.value === 'notify') {
+    loadNotifications(true)
+  } else {
+    loadPosts(true)
   }
 }
 
@@ -294,8 +426,35 @@ const handleSubmitComment = async () => {
   }
 }
 
+const handleDeletePost = async (post) => {
+  try {
+    await deleteSquarePost(post.postId)
+    ElMessage.success('删除帖子成功')
+    posts.value = posts.value.filter(p => p.postId !== post.postId)
+  } catch (error) {
+    console.error('删除帖子失败:', error)
+    ElMessage.error('删除帖子失败')
+  }
+}
+
+const handleDeleteComment = async (comment) => {
+  try {
+    await deleteSquareComment(comment.commentId)
+    ElMessage.success('删除评论成功')
+    comments.value = comments.value.filter(c => c.commentId !== comment.commentId)
+    const idx = posts.value.findIndex(p => p.postId === currentPostId.value)
+    if (idx !== -1 && posts.value[idx].commentCount) {
+      posts.value[idx].commentCount = Math.max((posts.value[idx].commentCount || 1) - 1, 0)
+    }
+  } catch (error) {
+    console.error('删除评论失败:', error)
+    ElMessage.error('删除评论失败')
+  }
+}
+
 onMounted(() => {
   loadPosts(true)
+  loadNotifications(true)
 })
 </script>
 
@@ -316,6 +475,23 @@ onMounted(() => {
   padding: 20px;
   background: white;
   border-radius: 8px;
+}
+
+.tab-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.unread-dot {
+  min-width: 18px;
+  padding: 0 6px;
+  border-radius: 9px;
+  background-color: #f56c6c;
+  color: #fff;
+  font-size: 12px;
+  line-height: 18px;
+  text-align: center;
 }
 
 .square-list {
@@ -425,5 +601,42 @@ onMounted(() => {
 
 .comment-input {
   margin-top: 10px;
+}
+
+.notify-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 10px;
+}
+
+.notify-item {
+  background: #fff;
+  padding: 12px 16px;
+  margin-bottom: 10px;
+  border-radius: 6px;
+  border-left: 4px solid transparent;
+}
+
+.notify-item--unread {
+  border-left-color: #409eff;
+  background: #ecf5ff;
+}
+
+.notify-message {
+  font-size: 14px;
+  margin-bottom: 6px;
+}
+
+.notify-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #999;
+}
+
+.notify-type {
+  padding: 0 6px;
+  border-radius: 10px;
+  background: #f0f2f5;
 }
 </style>

@@ -56,7 +56,7 @@ public class SquareController {
      * 获取帖子详情
      */
     @GetMapping("/posts/{postId}")
-    public Result<SquarePostVO> getPostDetail(@PathVariable Long postId) {
+    public Result<SquarePostVO> getPostDetail(@PathVariable("postId") Long postId) {
         Long userId = UserContext.getCurrentUserId();
         log.info("获取广场帖子详情: userId={}, postId={}", userId, postId);
         SquarePostVO vo = squareService.getPostDetail(userId, postId);
@@ -67,7 +67,7 @@ public class SquareController {
      * 删除帖子
      */
     @DeleteMapping("/posts/{postId}")
-    public Result<Void> deletePost(@PathVariable Long postId) {
+    public Result<Void> deletePost(@PathVariable("postId") Long postId) {
         Long userId = UserContext.getCurrentUserId();
         log.info("删除广场帖子: userId={}, postId={}", userId, postId);
         squareService.deletePost(userId, postId);
@@ -78,7 +78,7 @@ public class SquareController {
      * 点赞帖子
      */
     @PostMapping("/posts/{postId}/like")
-    public Result<Void> likePost(@PathVariable Long postId) {
+    public Result<Void> likePost(@PathVariable("postId") Long postId) {
         Long userId = UserContext.getCurrentUserId();
         log.info("点赞广场帖子: userId={}, postId={}", userId, postId);
         squareService.likePost(userId, postId);
@@ -89,7 +89,7 @@ public class SquareController {
      * 取消点赞
      */
     @DeleteMapping("/posts/{postId}/like")
-    public Result<Void> unlikePost(@PathVariable Long postId) {
+    public Result<Void> unlikePost(@PathVariable("postId") Long postId) {
         Long userId = UserContext.getCurrentUserId();
         log.info("取消点赞广场帖子: userId={}, postId={}", userId, postId);
         squareService.unlikePost(userId, postId);
@@ -100,7 +100,7 @@ public class SquareController {
      * 获取帖子评论列表
      */
     @GetMapping("/posts/{postId}/comments")
-    public PageResult<SquareCommentVO> listComments(@PathVariable Long postId,
+    public PageResult<SquareCommentVO> listComments(@PathVariable("postId") Long postId,
                                                     @RequestParam(name = "page", defaultValue = "1") Integer page,
                                                     @RequestParam(name = "size", defaultValue = "20") Integer size) {
         log.info("获取广场评论列表: postId={}, page={}, size={}", postId, page, size);
@@ -111,7 +111,7 @@ public class SquareController {
      * 发表评论 / 回复评论
      */
     @PostMapping("/posts/{postId}/comments")
-    public Result<Map<String, Object>> addComment(@PathVariable Long postId,
+    public Result<Map<String, Object>> addComment(@PathVariable("postId") Long postId,
                                                   @RequestBody Map<String, Object> params) {
         Long userId = UserContext.getCurrentUserId();
         String content = (String) params.get("content");
@@ -130,7 +130,7 @@ public class SquareController {
      * 删除评论
      */
     @DeleteMapping("/comments/{commentId}")
-    public Result<Void> deleteComment(@PathVariable Long commentId) {
+    public Result<Void> deleteComment(@PathVariable("commentId") Long commentId) {
         Long userId = UserContext.getCurrentUserId();
         log.info("删除广场评论: userId={}, commentId={}", userId, commentId);
         squareService.deleteComment(userId, commentId);
