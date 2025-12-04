@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.im.square.mapper.SquarePostMapper">
+
+    <resultMap id="BaseResultMap" type="com.im.square.entity.SquarePost">
+        <id column="id" property="id"/>
+        <result column="user_id" property="userId"/>
+        <result column="title" property="title"/>
+        <result column="content" property="content"/>
+        <result column="images" property="images"/>
+        <result column="video" property="video"/>
+        <result column="tags" property="tags"/>
+        <result column="status" property="status"/>
+        <result column="audit_status" property="auditStatus"/>
+        <result column="audit_reason" property="auditReason"/>
+        <result column="like_count" property="likeCount"/>
+        <result column="comment_count" property="commentCount"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, user_id, title, content, images, video, tags,
+        status, audit_status, audit_reason,
+        like_count, comment_count,
+        create_time, update_time
+    </sql>
+
+    <!-- 插入帖子 -->
+    <insert id="insert" parameterType="com.im.square.entity.SquarePost" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO square_post (
+            user_id, title, content, images, video, tags,
+            status, audit_status, audit_reason,
+            like_count, comment_count, create_time, update_time
+        ) VALUES (
+            #{userId}, #{title}, #{content}, #{images}, #{video}, #{tags},
+            #{status}, #{auditStatus}, #{auditReason},
+            #{likeCount}, #{commentCount}, #{createTime}, #{updateTime}
+        )
+    </insert>
+
+    <!-- 根据ID查询帖子 -->
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM square_post
+        WHERE id = #{id}
+    </select>
+
+    <!-- 作者软删除帖子 -->
+    <update id="softDelete">
+        UPDATE square_post
+        SET status = 0,
+            update_time = CURRENT_TIMESTAMP
+        WHERE id = #{id}
+          AND user_id = #{userId}
+          AND status != 0
+    </update>
+
+    <!-- 更新点赞数和评论数（增量） -->
+    <update id="updateCounters">
+        UPDATE square_post
+        SET like_count = GREATEST(like_count + #{likeDelta}, 0),
+            comment_count = GREATEST(comment_count + #{commentDelta}, 0),
+            update_time = CURRENT_TIMESTAMP
+        WHERE id = #{id}
+    </update>
+
+    <!-- 查询公开广场列表（仅正常且审核通过的帖子） -->
+    <select id="selectPublicList" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM square_post
+        WHERE status = 1
+          AND audit_status = 1
+        ORDER BY create_time DESC
+        LIMIT #{offset}, #{limit}
+    </select>
+
+    <select id="countPublic" resultType="long">
+        SELECT COUNT(*)
+        FROM square_post
+        WHERE status = 1
+          AND audit_status = 1
+    </select>
+
+    <!-- 查询某用户发布的帖子列表（排除删除） -->
+    <select id="selectByUser" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM square_post
+        WHERE user_id = #{userId}
+          AND status != 0
+        ORDER BY create_time DESC
+        LIMIT #{offset}, #{limit}
+    </select>
+
+    <select id="countByUser" resultType="long">
+        SELECT COUNT(*)
+        FROM square_post
+        WHERE user_id = #{userId}
+          AND status != 0
+    </select>
+
+</mapper>

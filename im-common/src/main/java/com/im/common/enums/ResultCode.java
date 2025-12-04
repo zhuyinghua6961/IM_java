@@ -59,7 +59,13 @@ public enum ResultCode {
     FILE_UPLOAD_FAIL(6001, "文件上传失败"),
     FILE_TYPE_NOT_SUPPORT(6002, "文件类型不支持"),
     FILE_SIZE_EXCEED(6003, "文件大小超限"),
-    FILE_NOT_FOUND(6004, "文件不存在");
+    FILE_NOT_FOUND(6004, "文件不存在"),
+
+    // 广场模块 7000-7999
+    SQUARE_POST_NOT_FOUND(7001, "广场帖子不存在"),
+    SQUARE_COMMENT_NOT_FOUND(7002, "广场评论不存在"),
+    SQUARE_ALREADY_LIKED(7003, "已经点赞过该帖子"),
+    SQUARE_CONTENT_REVIEW_NOT_PASS(7004, "内容审核未通过");
     
     private final Integer code;
     private final String message;

@@ -26,9 +26,9 @@ const routes = [
         component: () => import('@/views/Contacts.vue')
       },
       {
-        path: '/moments',
-        name: 'Moments',
-        component: () => import('@/views/Moments.vue')
+        path: '/square',
+        name: 'Square',
+        component: () => import('@/views/Square.vue')
       },
       {
         path: '/profile',

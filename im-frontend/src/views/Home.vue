@@ -24,9 +24,9 @@
           <span>通讯录</span>
         </el-menu-item>
         
-        <el-menu-item index="/moments">
+        <el-menu-item index="/square">
           <el-icon><PictureFilled /></el-icon>
-          <span>朋友圈</span>
+          <span>广场</span>
         </el-menu-item>
         
         <el-menu-item index="/profile">

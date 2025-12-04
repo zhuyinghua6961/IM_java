@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.im.square.mapper.SquareLikeMapper">
+
+    <resultMap id="BaseResultMap" type="com.im.square.entity.SquareLike">
+        <id column="id" property="id"/>
+        <result column="post_id" property="postId"/>
+        <result column="user_id" property="userId"/>
+        <result column="create_time" property="createTime"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, post_id, user_id, create_time
+    </sql>
+
+    <!-- 插入点赞记录 -->
+    <insert id="insert" parameterType="com.im.square.entity.SquareLike" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO square_like (post_id, user_id, create_time)
+        VALUES (#{postId}, #{userId}, #{createTime})
+    </insert>
+
+    <!-- 取消点赞 -->
+    <delete id="delete">
+        DELETE FROM square_like
+        WHERE post_id = #{postId}
+          AND user_id = #{userId}
+    </delete>
+
+    <!-- 判断用户是否已对帖子点赞 -->
+    <select id="countByPostAndUser" resultType="int">
+        SELECT COUNT(*)
+        FROM square_like
+        WHERE post_id = #{postId}
+          AND user_id = #{userId}
+    </select>
+
+    <!-- 统计帖子点赞数 -->
+    <select id="countByPost" resultType="int">
+        SELECT COUNT(*)
+        FROM square_like
+        WHERE post_id = #{postId}
+    </select>
+
+</mapper>

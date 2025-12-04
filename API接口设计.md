@@ -65,6 +65,10 @@
 | 4003 | 无操作权限 | ✅ |
 | 4004 | 群组已满 | ✅ |
 | 4005 | 已是群成员 | ✅ |
+| 7001 | 广场帖子不存在 | ✅ |
+| 7002 | 广场评论不存在 | ✅ |
+| 7003 | 已经点赞过该帖子 | ✅ |
+| 7004 | 内容审核未通过 | ✅ |
 
 ### 1.3 请求头
 
@@ -1238,10 +1242,292 @@ Content-Type: application/json
 | 群组 | 4003 | 无操作权限 |
 | 群组 | 4004 | 群组已满 |
 | 群组 | 4005 | 已是群成员 |
+| 广场 | 7001 | 广场帖子不存在 |
+| 广场 | 7002 | 广场评论不存在 |
+| 广场 | 7003 | 已经点赞过该帖子 |
+| 广场 | 7004 | 内容审核未通过 |
 
 ---
 
-## 9. 待实现功能清单
+## 9. 广场服务 API (im-square-service)
+
+### 9.1 发布广场帖子 ✅
+
+**接口地址**: `POST /api/square/posts`
+
+**说明**: 发布一条广场帖子，支持文本、多图、可选视频和标签。内容将经过可配置的内容审核。
+
+**请求参数**:
+
+```json
+{
+  "title": "可选标题",
+  "content": "正文内容",
+  "images": ["https://xxx.com/image1.jpg"],
+  "video": null,
+  "tags": ["编程", "生活"]
+}
+```
+
+**响应数据**:
+
+```json
+{
+  "code": 200,
+  "data": {
+    "postId": 1,
+    "createTime": "2025-01-01 12:00:00"
+  }
+}
+```
+
+---
+
+### 9.2 获取广场帖子列表 ✅
+
+**接口地址**: `GET /api/square/posts`
+
+**说明**: 分页获取广场中的公开帖子列表，只返回审核通过且未删除的帖子。
+
+**请求参数**:
+
+- `page` *(可选)*: 页码，默认 1
+- `size` *(可选)*: 每页大小，默认 20
+
+**响应数据**:
+
+```json
+{
+  "code": 200,
+  "data": {
+    "records": [
+      {
+        "postId": 1,
+        "userId": 1,
+        "title": "标题",
+        "content": "正文内容",
+        "images": ["https://xxx.com/a.jpg"],
+        "video": null,
+        "tags": ["编程"],
+        "likeCount": 10,
+        "commentCount": 5,
+        "liked": false,
+        "createTime": "2025-01-01 12:00:00"
+      }
+    ],
+    "total": 100,
+    "size": 20,
+    "current": 1,
+    "pages": 5
+  }
+}
+```
+
+---
+
+### 9.3 获取帖子详情 ✅
+
+**接口地址**: `GET /api/square/posts/{postId}`
+
+**说明**: 获取单条广场帖子的详细信息。
+
+**响应数据**:
+
+```json
+{
+  "code": 200,
+  "data": {
+    "postId": 1,
+    "userId": 1,
+    "title": "标题",
+    "content": "正文内容",
+    "images": ["https://xxx.com/a.jpg"],
+    "video": null,
+    "tags": ["编程"],
+    "likeCount": 10,
+    "commentCount": 5,
+    "liked": false,
+    "createTime": "2025-01-01 12:00:00"
+  }
+}
+```
+
+---
+
+### 9.4 删除帖子 ✅
+
+**接口地址**: `DELETE /api/square/posts/{postId}`
+
+**说明**:
+
+- 仅帖子作者本人可以删除
+- 实现为软删除：将 `status` 置为 0
+
+**响应数据**:
+
+```json
+{
+  "code": 200,
+  "message": "删除成功"
+}
+```
+
+---
+
+### 9.5 点赞 / 取消点赞 ✅
+
+**点赞接口地址**: `POST /api/square/posts/{postId}/like`
+
+**取消点赞接口地址**: `DELETE /api/square/posts/{postId}/like`
+
+**说明**:
+
+- 同一用户对同一帖子只能点赞一次
+- 点赞/取消点赞会同步更新 `likeCount`
+
+**点赞成功响应**:
+
+```json
+{
+  "code": 200,
+  "message": "success"
+}
+```
+
+---
+
+### 9.6 获取评论列表 ✅
+
+**接口地址**: `GET /api/square/posts/{postId}/comments`
+
+**说明**: 分页获取指定帖子下的评论列表，仅返回正常状态评论。
+
+**请求参数**:
+
+- `page` *(可选)*: 页码，默认 1
+- `size` *(可选)*: 每页大小，默认 20
+
+**响应数据**:
+
+```json
+{
+  "code": 200,
+  "data": {
+    "records": [
+      {
+        "commentId": 1,
+        "postId": 1,
+        "userId": 2,
+        "parentId": null,
+        "content": "评论内容",
+        "createTime": "2025-01-01 12:01:00"
+      }
+    ],
+    "total": 10,
+    "size": 20,
+    "current": 1,
+    "pages": 1
+  }
+}
+```
+
+---
+
+### 9.7 发表评论 / 回复评论 ✅
+
+**接口地址**: `POST /api/square/posts/{postId}/comments`
+
+**请求参数**:
+
+```json
+{
+  "content": "评论内容",
+  "parentId": null
+}
+```
+
+**说明**:
+
+- `parentId` 为空表示对帖子发表评论
+- `parentId` 不为空表示回复某条评论
+- 内容将经过内容审核
+
+**响应数据**:
+
+```json
+{
+  "code": 200,
+  "data": {
+    "commentId": 1
+  }
+}
+```
+
+---
+
+### 9.8 删除评论 ✅
+
+**接口地址**: `DELETE /api/square/comments/{commentId}`
+
+**说明**:
+
+- 仅评论作者本人可以删除评论（后续可扩展为帖子作者也可删除）
+- 实现为软删除：将 `status` 置为 0，并同步减少帖子评论数
+
+**响应数据**:
+
+```json
+{
+  "code": 200,
+  "message": "删除成功"
+}
+```
+
+---
+
+### 9.9 我的帖子列表 ✅
+
+**接口地址**: `GET /api/square/my/posts`
+
+**说明**: 分页获取当前登录用户自己发布的广场帖子列表，可看到审核状态。
+
+**请求参数**:
+
+- `page` *(可选)*: 页码，默认 1
+- `size` *(可选)*: 每页大小，默认 20
+
+**响应数据**:
+
+```json
+{
+  "code": 200,
+  "data": {
+    "records": [
+      {
+        "postId": 1,
+        "userId": 1,
+        "title": "标题",
+        "content": "正文内容",
+        "images": ["https://xxx.com/a.jpg"],
+        "video": null,
+        "tags": ["编程"],
+        "likeCount": 10,
+        "commentCount": 5,
+        "liked": false,
+        "createTime": "2025-01-01 12:00:00"
+      }
+    ],
+    "total": 10,
+    "size": 20,
+    "current": 1,
+    "pages": 1
+  }
+}
+```
+
+---
+
+## 10. 待实现功能清单
 
 ### 优先级 P0（核心功能）
 
@@ -1273,7 +1559,7 @@ Content-Type: application/json
 
 ---
 
-## 10. 版本更新记录
+## 11. 版本更新记录
 
 ### v2.0.0 (2025-11-27)
 - ✅ 完善群组管理功能

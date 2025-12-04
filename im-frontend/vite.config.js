@@ -33,6 +33,11 @@ export default defineConfig({
         target: 'http://localhost:8081',
         changeOrigin: true
       },
+      // 广场服务接口
+      '/api/square': {
+        target: 'http://localhost:8085',
+        changeOrigin: true
+      },
       // 消息服务接口
       '/api/conversation': {
         target: 'http://localhost:8082',

@@ -17,6 +17,7 @@
         <module>im-common</module>
         <module>im-user-service</module>
         <module>im-message-service</module>
+        <module>im-square-service</module>
     </modules>
 
     <properties>
