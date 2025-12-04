@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.im.square.mapper.SquareFollowMapper">
+
+    <resultMap id="BaseResultMap" type="com.im.square.entity.SquareFollow">
+        <id column="id" property="id"/>
+        <result column="follower_id" property="followerId"/>
+        <result column="followee_id" property="followeeId"/>
+        <result column="status" property="status"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.im.square.entity.SquareFollow" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO square_follow (
+            follower_id, followee_id, status, create_time, update_time
+        ) VALUES (
+            #{followerId}, #{followeeId}, #{status}, #{createTime}, #{updateTime}
+        )
+    </insert>
+
+    <update id="updateStatus">
+        UPDATE square_follow
+        SET status = #{status}, update_time = CURRENT_TIMESTAMP
+        WHERE follower_id = #{followerId}
+          AND followee_id = #{followeeId}
+    </update>
+
+    <select id="selectOne" resultMap="BaseResultMap">
+        SELECT id, follower_id, followee_id, status, create_time, update_time
+        FROM square_follow
+        WHERE follower_id = #{followerId}
+          AND followee_id = #{followeeId}
+        LIMIT 1
+    </select>
+
+    <select id="selectFollowerIds" resultType="long">
+        SELECT follower_id
+        FROM square_follow
+        WHERE followee_id = #{followeeId}
+          AND status = 1
+    </select>
+
+    <select id="selectFolloweeIds" resultType="long">
+        SELECT followee_id
+        FROM square_follow
+        WHERE follower_id = #{followerId}
+          AND status = 1
+    </select>
+
+</mapper>

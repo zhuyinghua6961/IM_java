@@ -8,9 +8,11 @@ import com.im.square.dto.UserProfileDTO;
 import com.im.square.entity.SquareComment;
 import com.im.square.entity.SquareLike;
 import com.im.square.entity.SquarePost;
+import com.im.square.entity.SquareFollow;
 import com.im.square.mapper.SquareCommentMapper;
 import com.im.square.mapper.SquareLikeMapper;
 import com.im.square.mapper.SquarePostMapper;
+import com.im.square.mapper.SquareFollowMapper;
 import com.im.square.mapper.FriendRelationMapper;
 import com.im.square.service.ContentReviewService;
 import com.im.square.service.RemoteSquareNotificationService;
@@ -20,13 +22,19 @@ import com.im.square.vo.SquareCommentVO;
 import com.im.square.vo.SquarePostVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
@@ -42,12 +50,20 @@ public class SquareServiceImpl implements SquareService {
     private final ContentReviewService contentReviewService;
     private final RemoteUserService remoteUserService;
     private final RemoteSquareNotificationService remoteSquareNotificationService;
+    private final SquareFollowMapper followMapper;
     private final FriendRelationMapper friendRelationMapper;
 
     private final StringRedisTemplate redisTemplate;
+    private final KafkaTemplate<String, String> kafkaTemplate;
 
     private static final String PUBLIC_POST_LIST_KEY_PREFIX = "square:post:list:page:";
     private static final long PUBLIC_POST_LIST_EXPIRE_MINUTES = 5L;
+
+    private static final String FOLLOW_FEED_KEY_PREFIX = "square:feed:user:";
+    private static final long FOLLOW_FEED_MAX_SIZE = 500L;
+
+    @Value("${im.square.feed-kafka-topic:im-square-feed}")
+    private String feedKafkaTopic;
 
     @Override
     public Long publishPost(Long userId,
@@ -97,6 +113,20 @@ public class SquareServiceImpl implements SquareService {
         log.info("发布广场帖子成功, userId={}, postId={}", userId, post.getId());
 
         clearPublicPostListCache();
+
+        // 发送异步Feed事件到Kafka，ID使用字符串避免雪花ID精度问题
+        try {
+            Map<String, Object> event = new HashMap<>();
+            event.put("postId", String.valueOf(post.getId()));
+            event.put("authorId", String.valueOf(userId));
+            event.put("createTime", now.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli());
+            String payload = JSON.toJSONString(event);
+            kafkaTemplate.send(feedKafkaTopic, String.valueOf(userId), payload);
+            log.info("发送广场Feed Kafka事件成功, topic={}, key={}, payload={}", feedKafkaTopic, userId, payload);
+        } catch (Exception e) {
+            log.warn("发送广场Feed Kafka事件失败, userId={}, postId={}", userId, post.getId(), e);
+        }
+
         return post.getId();
     }
 
@@ -133,6 +163,19 @@ public class SquareServiceImpl implements SquareService {
             total = postMapper.countPublic();
         }
 
+        // 当前用户关注的作者ID集合，用于标记 followed
+        Set<Long> followeeIdSet = Collections.emptySet();
+        if (currentUserId != null) {
+            try {
+                List<Long> followeeIds = followMapper.selectFolloweeIds(currentUserId);
+                if (followeeIds != null && !followeeIds.isEmpty()) {
+                    followeeIdSet = new HashSet<>(followeeIds);
+                }
+            } catch (Exception e) {
+                log.warn("查询广场关注列表失败, userId={}", currentUserId, e);
+            }
+        }
+
         List<SquarePostVO> records = new ArrayList<>();
         for (SquarePost post : posts) {
             if (!isPostVisibleToUser(post, currentUserId)) {
@@ -142,7 +185,8 @@ public class SquareServiceImpl implements SquareService {
             if (currentUserId != null) {
                 liked = likeMapper.countByPostAndUser(post.getId(), currentUserId) > 0;
             }
-            records.add(toPostVO(post, liked));
+            boolean followed = currentUserId != null && followeeIdSet.contains(post.getUserId());
+            records.add(toPostVO(post, liked, followed));
         }
 
         try {
@@ -170,7 +214,16 @@ public class SquareServiceImpl implements SquareService {
             throw new BusinessException(ResultCode.SQUARE_POST_NOT_FOUND);
         }
         boolean liked = currentUserId != null && likeMapper.countByPostAndUser(postId, currentUserId) > 0;
-        return toPostVO(post, liked);
+        boolean followed = false;
+        if (currentUserId != null) {
+            try {
+                SquareFollow follow = followMapper.selectOne(currentUserId, post.getUserId());
+                followed = (follow != null && follow.getStatus() != null && follow.getStatus() == 1);
+            } catch (Exception e) {
+                log.warn("查询帖子详情时关注关系失败, viewerId={}, authorId={}", currentUserId, post.getUserId(), e);
+            }
+        }
+        return toPostVO(post, liked, followed);
     }
 
     @Override
@@ -314,6 +367,31 @@ public class SquareServiceImpl implements SquareService {
         }
     }
 
+    private void pushPostToFollowersFeed(Long authorId, Long postId, LocalDateTime createTime) {
+        try {
+            List<Long> followerIds = followMapper.selectFollowerIds(authorId);
+            if (followerIds == null || followerIds.isEmpty()) {
+                return;
+            }
+            double score = createTime.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+            for (Long followerId : followerIds) {
+                if (followerId == null) continue;
+                String feedKey = FOLLOW_FEED_KEY_PREFIX + followerId;
+                redisTemplate.opsForZSet().add(feedKey, String.valueOf(postId), score);
+                // 控制每个用户 feed 的最大长度
+                Long size = redisTemplate.opsForZSet().size(feedKey);
+                if (size != null && size > FOLLOW_FEED_MAX_SIZE) {
+                    long removeCount = size - FOLLOW_FEED_MAX_SIZE;
+                    if (removeCount > 0) {
+                        redisTemplate.opsForZSet().removeRange(feedKey, 0, removeCount - 1);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("推送广场帖子到粉丝 feed 失败, authorId={}, postId={}", authorId, postId, e);
+        }
+    }
+
     private static class CachedPostPage {
         private List<SquarePost> posts;
         private long total;
@@ -346,14 +424,69 @@ public class SquareServiceImpl implements SquareService {
 
         List<SquarePostVO> records = new ArrayList<>();
         for (SquarePost post : posts) {
-            // 我的帖子列表里，liked 字段目前对自己用处不大，统一返回 false
-            records.add(toPostVO(post, false));
+            // 我的帖子列表里，liked / followed 字段对自己用处不大，统一返回 false
+            records.add(toPostVO(post, false, false));
         }
 
         return PageResult.of(records, total, (long) size, (long) page);
     }
 
-    private SquarePostVO toPostVO(SquarePost post, boolean liked) {
+    @Override
+    public PageResult<SquarePostVO> listFollowFeed(Long currentUserId, int page, int size) {
+        if (currentUserId == null) {
+            return PageResult.of(Collections.emptyList(), 0L, (long) size, (long) page);
+        }
+        if (page <= 0) page = 1;
+        if (size <= 0) size = 20;
+
+        String key = FOLLOW_FEED_KEY_PREFIX + currentUserId;
+        long start = (long) (page - 1) * size;
+        long end = start + size - 1;
+
+        Set<String> idStrSet;
+        long total = 0L;
+        try {
+            idStrSet = redisTemplate.opsForZSet().reverseRange(key, start, end);
+            Long zcard = redisTemplate.opsForZSet().size(key);
+            if (zcard != null) {
+                total = zcard;
+            }
+        } catch (Exception e) {
+            log.warn("读取关注 feed 失败，降级为空, userId={}, page={}, size={}", currentUserId, page, size, e);
+            idStrSet = Collections.emptySet();
+        }
+
+        if (idStrSet == null || idStrSet.isEmpty()) {
+            return PageResult.of(Collections.emptyList(), total, (long) size, (long) page);
+        }
+
+        List<Long> ids = new ArrayList<>();
+        for (String s : idStrSet) {
+            try {
+                ids.add(Long.valueOf(s));
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        if (ids.isEmpty()) {
+            return PageResult.of(Collections.emptyList(), total, (long) size, (long) page);
+        }
+
+        List<SquarePost> posts = postMapper.selectByIds(ids);
+
+        List<SquarePostVO> records = new ArrayList<>();
+        for (SquarePost post : posts) {
+            if (!isPostVisibleToUser(post, currentUserId)) {
+                continue;
+            }
+            boolean liked = likeMapper.countByPostAndUser(post.getId(), currentUserId) > 0;
+            // 来自“我的关注”feed，作者必然是已关注
+            records.add(toPostVO(post, liked, true));
+        }
+
+        return PageResult.of(records, total, (long) size, (long) page);
+    }
+
+    private SquarePostVO toPostVO(SquarePost post, boolean liked, boolean followed) {
         if (post == null) {
             return null;
         }
@@ -375,6 +508,7 @@ public class SquareServiceImpl implements SquareService {
         vo.setLikeCount(post.getLikeCount());
         vo.setCommentCount(post.getCommentCount());
         vo.setLiked(liked);
+        vo.setFollowed(followed);
         vo.setCreateTime(post.getCreateTime());
         return vo;
     }
@@ -476,5 +610,32 @@ public class SquareServiceImpl implements SquareService {
             log.warn("解析排除可见用户列表失败: {}", json, e);
         }
         return false;
+    }
+
+    @Override
+    public void followUser(Long followerId, Long followeeId) {
+        if (followerId == null || followeeId == null || Objects.equals(followerId, followeeId)) {
+            throw new BusinessException(ResultCode.BAD_REQUEST, "关注用户参数不合法");
+        }
+        SquareFollow exist = followMapper.selectOne(followerId, followeeId);
+        if (exist == null) {
+            SquareFollow follow = new SquareFollow();
+            follow.setFollowerId(followerId);
+            follow.setFolloweeId(followeeId);
+            follow.setStatus(1);
+            follow.setCreateTime(LocalDateTime.now());
+            follow.setUpdateTime(LocalDateTime.now());
+            followMapper.insert(follow);
+        } else {
+            followMapper.updateStatus(followerId, followeeId, 1);
+        }
+    }
+
+    @Override
+    public void unfollowUser(Long followerId, Long followeeId) {
+        if (followerId == null || followeeId == null || Objects.equals(followerId, followeeId)) {
+            throw new BusinessException(ResultCode.BAD_REQUEST, "取消关注用户参数不合法");
+        }
+        followMapper.updateStatus(followerId, followeeId, 0);
     }
 }

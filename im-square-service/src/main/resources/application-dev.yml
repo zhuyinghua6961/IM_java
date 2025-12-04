@@ -13,6 +13,8 @@ im:
     access-key-id: LTAI5tDZjKwXoPduSX4RfuyT
     access-key-secret: SmXn71oOz6t0QRikCNGxGS1nRKNWa4
     bucket-name: im-chat-zyh
+  square:
+    feed-kafka-topic: im-square-feed
 
 spring:
   config:

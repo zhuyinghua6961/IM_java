@@ -51,5 +51,8 @@ public class SquarePostVO {
     /** 当前用户是否已点赞 */
     private Boolean liked;
 
+    /** 当前用户是否已关注作者 */
+    private Boolean followed;
+
     private LocalDateTime createTime;
 }

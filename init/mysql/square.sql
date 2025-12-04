@@ -52,6 +52,21 @@ CREATE TABLE `square_comment` (
   KEY `idx_user` (`user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='广场评论表';
 
+-- 广场关注表
+DROP TABLE IF EXISTS `square_follow`;
+CREATE TABLE `square_follow` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `follower_id` BIGINT NOT NULL COMMENT '关注方用户ID',
+  `followee_id` BIGINT NOT NULL COMMENT '被关注用户ID',
+  `status` TINYINT DEFAULT 1 COMMENT '状态 1-关注 0-取消',
+  `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '关注时间',
+  `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_follower_followee` (`follower_id`,`followee_id`),
+  KEY `idx_followee` (`followee_id`),
+  KEY `idx_follower` (`follower_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='广场关注表';
+
 -- 广场通知表
 DROP TABLE IF EXISTS `square_notification`;
 CREATE TABLE `square_notification` (

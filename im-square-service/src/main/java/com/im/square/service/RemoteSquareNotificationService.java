@@ -88,6 +88,33 @@ public class RemoteSquareNotificationService {
         }
     }
 
+    public void sendFollowPostNotification(SquarePost post, Long followerId) {
+        if (post == null || followerId == null || post.getUserId() == null) {
+            return;
+        }
+        try {
+            Long authorId = post.getUserId();
+            if (Objects.equals(authorId, followerId)) {
+                return;
+            }
+            UserProfileDTO authorProfile = remoteUserService.getUserProfile(authorId);
+            String nickname = authorProfile != null && authorProfile.getNickname() != null
+                    ? authorProfile.getNickname()
+                    : "用户 " + authorId;
+            String title = post.getTitle() != null ? post.getTitle() : "";
+            String message = nickname + " 发布了新帖子" + (title.isEmpty() ? "" : "《" + title + "》");
+
+            Map<String, Object> extra = new HashMap<>();
+            extra.put("actorNickname", nickname);
+            extra.put("postTitle", title);
+
+            doSend(followerId, post.getId(), null, authorId, "FOLLOW_POST", message, JSON.toJSONString(extra));
+        } catch (Exception e) {
+            log.warn("发送关注用户发帖广场通知失败, postId={}, followerId={}",
+                    post != null ? post.getId() : null, followerId, e);
+        }
+    }
+
     private void doSend(Long toUserId, Long postId, Long commentId, Long actorId,
                         String actionType, String message, String extraJson) {
         try {

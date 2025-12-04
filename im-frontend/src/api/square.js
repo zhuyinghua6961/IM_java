@@ -85,6 +85,31 @@ export function getMySquarePosts(page = 1, size = 20) {
   })
 }
 
+// 我的关注动态（关注的用户的广场帖子）
+export function getFollowSquarePosts(page = 1, size = 20) {
+  return request({
+    url: '/square/feed',
+    method: 'get',
+    params: { page, size }
+  })
+}
+
+// 关注广场用户
+export function followSquareUser(userId) {
+  return request({
+    url: `/square/follow/${userId}`,
+    method: 'post'
+  })
+}
+
+// 取消关注广场用户
+export function unfollowSquareUser(userId) {
+  return request({
+    url: `/square/follow/${userId}`,
+    method: 'delete'
+  })
+}
+
 // 我的广场消息列表
 export function getSquareNotifications(page = 1, size = 20) {
   return request({

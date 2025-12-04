@@ -4,6 +4,7 @@
       <h2>广场</h2>
       <el-radio-group v-model="activeTab" size="small" @change="handleTabChange">
         <el-radio-button label="all">全部</el-radio-button>
+        <el-radio-button label="follow">我的关注</el-radio-button>
         <el-radio-button label="mine">我的帖子</el-radio-button>
         <el-radio-button label="notify">
           <span class="tab-label">
@@ -30,6 +31,21 @@
           <div class="user-info">
             <div class="user-name">{{ post.nickname || `用户 ${post.userId}` }}</div>
             <div class="post-time">{{ post.createTime }}</div>
+          </div>
+          <div class="user-actions" v-if="String(post.userId) !== String(currentUserId)">
+            <el-button
+              v-if="post.followed"
+              size="small"
+              text
+              @click="toggleFollow(post)"
+            >已关注</el-button>
+            <el-button
+              v-else
+              size="small"
+              type="primary"
+              text
+              @click="toggleFollow(post)"
+            >关注</el-button>
           </div>
         </div>
 
@@ -110,6 +126,7 @@
               <span class="notify-time">{{ formatTime(item.createTime) }}</span>
               <span class="notify-type" v-if="item.actionType === 'LIKE'">点赞</span>
               <span class="notify-type" v-else-if="item.actionType === 'COMMENT'">评论</span>
+              <span class="notify-type" v-else-if="item.actionType === 'FOLLOW_POST'">发帖</span>
             </div>
           </div>
 
@@ -129,6 +146,7 @@
               <span class="notify-time">{{ formatTime(item.createTime) }}</span>
               <span class="notify-type" v-if="item.actionType === 'LIKE'">点赞</span>
               <span class="notify-type" v-else-if="item.actionType === 'COMMENT'">评论</span>
+              <span class="notify-type" v-else-if="item.actionType === 'FOLLOW_POST'">发帖</span>
             </div>
           </div>
 
@@ -302,6 +320,7 @@ import {
   publishSquarePost,
   getSquarePosts,
   getMySquarePosts,
+  getFollowSquarePosts,
   deleteSquarePost,
   likeSquarePost,
   unlikeSquarePost,
@@ -310,7 +329,10 @@ import {
   deleteSquareComment,
   getSquareNotifications,
   markSquareNotificationsRead,
-  markSquareNotificationsReadByIds
+  markSquareNotificationsReadByIds,
+  followSquareUser,
+  unfollowSquareUser,
+  getSquarePostDetail
 } from '@/api/square'
 
 const userStore = useUserStore()
@@ -407,7 +429,14 @@ const loadPosts = async (reset = false) => {
       posts.value = []
       hasMore.value = true
     }
-    const api = activeTab.value === 'mine' ? getMySquarePosts : getSquarePosts
+    let api
+    if (activeTab.value === 'mine') {
+      api = getMySquarePosts
+    } else if (activeTab.value === 'follow') {
+      api = getFollowSquarePosts
+    } else {
+      api = getSquarePosts
+    }
     const res = await api(page.value, size.value)
     const data = res.data || {}
     const records = data.records || []
@@ -493,16 +522,39 @@ const loadNotifications = async (reset = false) => {
 }
 
 const handleClickNotification = async (item) => {
-  if (!item || item.read === 1) return
+  if (!item) return
+
   const id = item.id
-  if (!id) return
-  // 先本地更新体验更顺滑
-  item.read = 1
-  notifyUnread.value = Math.max((notifyUnread.value || 0) - 1, 0)
-  try {
-    await markSquareNotificationsReadByIds([id])
-  } catch (error) {
-    console.error('单条标记广场消息已读失败:', error)
+  if (item.read === 0 && id) {
+    // 先本地更新已读状态，提升体验
+    item.read = 1
+    notifyUnread.value = Math.max((notifyUnread.value || 0) - 1, 0)
+    try {
+      await markSquareNotificationsReadByIds([id])
+    } catch (error) {
+      console.error('单条标记广场消息已读失败:', error)
+    }
+  }
+
+  const postId = item.postId
+  if (postId) {
+    try {
+      const res = await getSquarePostDetail(postId)
+      const data = res.data || null
+      if (data) {
+        // 使用帖子详情替换当前列表，方便从通知直接查看帖子
+        activeTab.value = 'all'
+        page.value = 1
+        hasMore.value = false
+        posts.value = [data]
+        // 评论类通知，自动打开评论对话框
+        if (item.actionType === 'COMMENT') {
+          await openComments(data)
+        }
+      }
+    } catch (error) {
+      console.error('根据广场通知加载帖子详情失败:', error)
+    }
   }
 }
 
@@ -517,6 +569,22 @@ const handleTabChange = () => {
     loadNotifications(true)
   } else {
     loadPosts(true)
+  }
+}
+
+const toggleFollow = async (post) => {
+  const targetId = post.userId
+  if (!targetId) return
+  try {
+    if (post.followed) {
+      await unfollowSquareUser(targetId)
+      post.followed = false
+    } else {
+      await followSquareUser(targetId)
+      post.followed = true
+    }
+  } catch (error) {
+    console.error('切换关注状态失败:', error)
   }
 }
 

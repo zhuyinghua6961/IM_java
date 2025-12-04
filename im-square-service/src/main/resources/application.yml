@@ -24,6 +24,21 @@ spring:
       password: ${im.redis.password}
       database: 1
 
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+    consumer:
+      group-id: im-square-feed-consumer
+      enable-auto-commit: false
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: earliest
+    listener:
+      ack-mode: manual
+      concurrency: 1
+
 mybatis:
   mapper-locations: classpath:mapper/*.xml
   type-aliases-package: com.im.square.entity

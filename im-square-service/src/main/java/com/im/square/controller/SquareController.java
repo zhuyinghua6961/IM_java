@@ -188,4 +188,37 @@ public class SquareController {
         log.info("获取我的广场帖子列表: userId={}, page={}, size={}", userId, page, size);
         return squareService.listMyPosts(userId, page, size);
     }
+
+    /**
+     * 获取我关注的用户的广场帖子（关注 feed）
+     */
+    @GetMapping("/feed")
+    public PageResult<SquarePostVO> listFollowFeed(@RequestParam(name = "page", defaultValue = "1") Integer page,
+                                                   @RequestParam(name = "size", defaultValue = "20") Integer size) {
+        Long userId = UserContext.getCurrentUserId();
+        log.info("获取我的关注广场帖子列表: userId={}, page={}, size={}", userId, page, size);
+        return squareService.listFollowFeed(userId, page, size);
+    }
+
+    /**
+     * 关注广场用户（单向关注）
+     */
+    @PostMapping("/follow/{targetUserId}")
+    public Result<Void> followUser(@PathVariable("targetUserId") Long targetUserId) {
+        Long userId = UserContext.getCurrentUserId();
+        log.info("关注广场用户: followerId={}, followeeId={}", userId, targetUserId);
+        squareService.followUser(userId, targetUserId);
+        return Result.success();
+    }
+
+    /**
+     * 取消关注广场用户
+     */
+    @DeleteMapping("/follow/{targetUserId}")
+    public Result<Void> unfollowUser(@PathVariable("targetUserId") Long targetUserId) {
+        Long userId = UserContext.getCurrentUserId();
+        log.info("取消关注广场用户: followerId={}, followeeId={}", userId, targetUserId);
+        squareService.unfollowUser(userId, targetUserId);
+        return Result.success();
+    }
 }

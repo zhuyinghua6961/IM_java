@@ -19,6 +19,11 @@ public interface SquareService {
 
     PageResult<SquarePostVO> listPublicPosts(Long currentUserId, int page, int size);
 
+    /**
+     * 获取我关注的用户的广场帖子（基于关注关系的 feed 流）
+     */
+    PageResult<SquarePostVO> listFollowFeed(Long currentUserId, int page, int size);
+
     SquarePostVO getPostDetail(Long currentUserId, Long postId);
 
     void deletePost(Long userId, Long postId);
@@ -34,4 +39,14 @@ public interface SquareService {
     void deleteComment(Long userId, Long commentId);
 
     PageResult<SquarePostVO> listMyPosts(Long userId, int page, int size);
+
+    /**
+     * 关注某个广场用户（单向关注，不是好友）
+     */
+    void followUser(Long followerId, Long followeeId);
+
+    /**
+     * 取消关注
+     */
+    void unfollowUser(Long followerId, Long followeeId);
 }

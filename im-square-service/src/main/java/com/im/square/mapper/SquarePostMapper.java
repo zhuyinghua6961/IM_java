@@ -29,4 +29,6 @@ public interface SquarePostMapper {
                                   @Param("limit") int limit);
 
     long countByUser(@Param("userId") Long userId);
+
+    List<SquarePost> selectByIds(@Param("ids") List<Long> ids);
 }
