@@ -55,6 +55,26 @@
               {{ formatTime(post.createTime) }}
             </span>
           </span>
+          <div class="post-ops">
+            <el-button
+              text
+              size="small"
+              :type="post.liked ? 'primary' : 'default'"
+              :icon="Pointer"
+              @click="toggleLike(post)"
+            >
+              {{ post.liked ? '已赞' : '点赞' }} {{ post.likeCount || 0 }}
+            </el-button>
+            <el-button
+              text
+              size="small"
+              :type="post.favorited ? 'primary' : 'default'"
+              :icon="Star"
+              @click="toggleFavorite(post)"
+            >
+              {{ post.favorited ? '已收藏' : '收藏' }} {{ post.favoriteCount || 0 }}
+            </el-button>
+          </div>
         </div>
       </div>
 
@@ -73,11 +93,16 @@
 import { ref, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { Star, Pointer } from '@element-plus/icons-vue'
 import {
   getSquareProfile,
   getUserSquarePosts,
   getUserFavoriteSquarePosts,
   getUserLikedSquarePosts,
+  likeSquarePost,
+  unlikeSquarePost,
+  favoriteSquarePost,
+  unfavoriteSquarePost,
   followSquareUser,
   unfollowSquareUser
 } from '@/api/square'
@@ -145,6 +170,48 @@ const loadMore = () => {
   if (!hasMore.value) return
   page.value += 1
   loadPosts()
+}
+
+const toggleLike = async (post) => {
+  if (!post || !post.postId) return
+  try {
+    if (post.liked) {
+      await unlikeSquarePost(post.postId)
+      post.liked = false
+      post.likeCount = Math.max((post.likeCount || 1) - 1, 0)
+      // 在“我的点赞”Tab 下，取消点赞后从列表移除（仅对自己的主页生效）
+      if (activeTab.value === 'likes' && profile.value.self) {
+        posts.value = posts.value.filter(p => p.postId !== post.postId)
+      }
+    } else {
+      await likeSquarePost(post.postId)
+      post.liked = true
+      post.likeCount = (post.likeCount || 0) + 1
+    }
+  } catch (error) {
+    console.error('切换点赞状态失败(个人广场):', error)
+  }
+}
+
+const toggleFavorite = async (post) => {
+  if (!post || !post.postId) return
+  try {
+    if (post.favorited) {
+      await unfavoriteSquarePost(post.postId)
+      post.favorited = false
+      post.favoriteCount = Math.max((post.favoriteCount || 1) - 1, 0)
+      // 在“我的收藏”Tab 下，取消收藏后从列表移除（仅对自己的主页生效）
+      if (activeTab.value === 'favorites' && profile.value.self) {
+        posts.value = posts.value.filter(p => p.postId !== post.postId)
+      }
+    } else {
+      await favoriteSquarePost(post.postId)
+      post.favorited = true
+      post.favoriteCount = (post.favoriteCount || 0) + 1
+    }
+  } catch (error) {
+    console.error('切换收藏状态失败(个人广场):', error)
+  }
 }
 
 watch(activeTab, () => {
@@ -247,6 +314,14 @@ onMounted(() => {
   margin-top: 8px;
   font-size: 12px;
   color: #999;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.post-ops {
+  display: flex;
+  gap: 8px;
 }
 
 .load-more {
