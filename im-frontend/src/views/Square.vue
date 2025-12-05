@@ -138,6 +138,15 @@
 
     <!-- 我的广场消息 -->
     <el-scrollbar v-else class="square-list">
+      <div class="notify-type-filter">
+        <el-radio-group v-model="notifyTypeFilter" size="small">
+          <el-radio-button label="all">全部</el-radio-button>
+          <el-radio-button label="LIKE">点赞</el-radio-button>
+          <el-radio-button label="COMMENT">评论</el-radio-button>
+          <el-radio-button label="FOLLOW_POST">发帖</el-radio-button>
+        </el-radio-group>
+      </div>
+
       <el-tabs v-model="notifyInnerTab">
         <el-tab-pane label="未读" name="unread">
           <div class="notify-actions" v-if="unreadNotifications.length > 0">
@@ -280,11 +289,13 @@
 
     <!-- 评论对话框 -->
     <el-dialog v-model="showCommentDialog" :title="'评论帖子 #' + currentPostId" width="500px">
-      <div class="comment-list">
+      <div class="comment-list" ref="commentListRef">
         <div
           v-for="comment in comments"
           :key="comment.commentId"
           class="comment-item"
+          :id="'square-comment-' + comment.commentId"
+          :class="{ 'comment-item--highlight': highlightedCommentId === comment.commentId }"
         >
           <div class="comment-header">
             <span class="comment-user">{{ comment.nickname || `用户 ${comment.userId}` }}</span>
@@ -309,9 +320,10 @@
             class="comment-replies"
           >
             <div
-              v-for="reply in comment.replies"
+              v-for="reply in getVisibleReplies(comment)"
               :key="reply.commentId"
-              class="comment-item comment-item--reply"
+              :id="'square-comment-' + reply.commentId"
+              :class="['comment-item', 'comment-item--reply', { 'comment-item--highlight': highlightedCommentId === reply.commentId }]"
             >
               <div class="comment-header">
                 <span class="comment-user">
@@ -335,6 +347,22 @@
                 </div>
               </div>
               <div class="comment-content">{{ reply.content }}</div>
+            </div>
+            <div
+              v-if="comment.replies.length > maxVisibleReplies"
+              class="comment-replies-toggle"
+            >
+              <el-button
+                text
+                size="small"
+                @click="toggleRepliesExpand(comment)"
+              >
+                {{
+                  isRepliesExpanded(comment)
+                    ? '收起回复'
+                    : `展开更多回复（剩余 ${comment.replies.length - maxVisibleReplies} 条）`
+                }}
+              </el-button>
             </div>
           </div>
         </div>
@@ -468,6 +496,11 @@ const commentLoading = ref(false)
 const commentContent = ref('')
 const commentSubmitting = ref(false)
 const replyTarget = ref(null)
+const commentListRef = ref(null)
+const highlightedCommentId = ref(null)
+
+const maxVisibleReplies = 2
+const expandedReplyCommentIds = ref([])
 
 // 广场通知
 const notifications = ref([])
@@ -476,17 +509,23 @@ const notifySize = ref(20)
 const notifyHasMore = ref(true)
 const notifyLoading = ref(false)
 const notifyUnread = ref(0)
+const notifyTypeFilter = ref('all')
 
 // 图片预览
 const previewVisible = ref(false)
 const previewImageUrl = ref('')
 
+const filterNotificationsByType = (list) => {
+  if (notifyTypeFilter.value === 'all') return list
+  return list.filter(item => item.actionType === notifyTypeFilter.value)
+}
+
 const unreadNotifications = computed(() =>
-  notifications.value.filter(item => item.read === 0)
+  filterNotificationsByType(notifications.value.filter(item => item.read === 0))
 )
 
 const readNotifications = computed(() =>
-  notifications.value.filter(item => item.read === 1)
+  filterNotificationsByType(notifications.value.filter(item => item.read === 1))
 )
 
 const formatTime = (time) => {
@@ -525,6 +564,23 @@ const loadPosts = async (reset = false) => {
   } finally {
     loading.value = false
   }
+}
+
+const highlightComment = async (commentId) => {
+  if (!commentId) return
+  highlightedCommentId.value = commentId
+  await nextTick()
+  const container = commentListRef.value
+  if (!container) return
+  const el = container.querySelector(`#square-comment-${commentId}`)
+  if (!el) return
+  const offsetTop = el.offsetTop - container.offsetTop
+  container.scrollTop = offsetTop
+  setTimeout(() => {
+    if (highlightedCommentId.value === commentId) {
+      highlightedCommentId.value = null
+    }
+  }, 3000)
 }
 
 const goProfile = (userId) => {
@@ -649,9 +705,12 @@ const handleClickNotification = async (item) => {
       await scrollToPost(postId)
 
       const targetPost = posts.value.find(p => p.postId === postId)
-      // 评论类通知，自动打开评论对话框
+      // 评论类通知，自动打开评论对话框并高亮对应评论
       if (item.actionType === 'COMMENT' && targetPost) {
         await openComments(targetPost)
+        if (item.commentId) {
+          await highlightComment(item.commentId)
+        }
       }
     } catch (error) {
       console.error('根据广场通知加载帖子详情失败:', error)
@@ -955,6 +1014,29 @@ const loadComments = async () => {
   } finally {
     commentLoading.value = false
   }
+}
+
+const isRepliesExpanded = (comment) => {
+  if (!comment) return false
+  return expandedReplyCommentIds.value.includes(comment.commentId)
+}
+
+const toggleRepliesExpand = (comment) => {
+  if (!comment || !comment.commentId) return
+  const id = comment.commentId
+  const idx = expandedReplyCommentIds.value.indexOf(id)
+  if (idx === -1) {
+    expandedReplyCommentIds.value.push(id)
+  } else {
+    expandedReplyCommentIds.value.splice(idx, 1)
+  }
+}
+
+const getVisibleReplies = (comment) => {
+  if (!comment || !Array.isArray(comment.replies)) return []
+  if (isRepliesExpanded(comment)) return comment.replies
+  if (comment.replies.length <= maxVisibleReplies) return comment.replies
+  return comment.replies.slice(0, maxVisibleReplies)
 }
 
 const handleSubmitComment = async () => {
