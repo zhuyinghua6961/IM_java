@@ -26,6 +26,12 @@ public interface SquarePostMapper {
 
     long countPublic();
 
+    /**
+     * 按热度排序的公开帖子列表
+     */
+    List<SquarePost> selectPublicHotList(@Param("offset") int offset,
+                                         @Param("limit") int limit);
+
     List<SquarePost> selectByUser(@Param("userId") Long userId,
                                   @Param("offset") int offset,
                                   @Param("limit") int limit);

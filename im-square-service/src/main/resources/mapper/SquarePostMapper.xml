@@ -96,6 +96,26 @@
         LIMIT #{offset}, #{limit}
     </select>
 
+    <!-- 按热度排序的公开广场列表（最近3天，热度=点赞*2 + 评论*3 + 收藏*4，时间次之） -->
+    <select id="selectPublicHotList" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM square_post
+        WHERE status = 1
+          AND audit_status = 1
+          AND create_time >= DATE_SUB(NOW(), INTERVAL 3 DAY)
+        ORDER BY (
+                 like_count * 2
+                 + comment_count * 3
+                 + 4 * (
+                     SELECT COUNT(*)
+                     FROM square_favorite f
+                     WHERE f.post_id = square_post.id
+                 )
+               ) DESC,
+                 create_time DESC
+        LIMIT #{offset}, #{limit}
+    </select>
+
     <select id="countPublic" resultType="long">
         SELECT COUNT(*)
         FROM square_post

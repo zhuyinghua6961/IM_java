@@ -95,6 +95,17 @@ public class SquareController {
     }
 
     /**
+     * 获取热门广场帖子列表（按热度排序）
+     */
+    @GetMapping("/posts/hot")
+    public PageResult<SquarePostVO> listHotPosts(@RequestParam(name = "page", defaultValue = "1") Integer page,
+                                                 @RequestParam(name = "size", defaultValue = "20") Integer size) {
+        Long userId = UserContext.getCurrentUserId();
+        log.info("获取热门广场帖子列表: userId={}, page={}, size={}", userId, page, size);
+        return squareService.listHotPosts(userId, page, size);
+    }
+
+    /**
      * 获取帖子详情
      */
     @GetMapping("/posts/{postId}")
@@ -200,6 +211,28 @@ public class SquareController {
     }
 
     /**
+     * 收藏帖子
+     */
+    @PostMapping("/posts/{postId}/favorite")
+    public Result<Void> favoritePost(@PathVariable("postId") Long postId) {
+        Long userId = UserContext.getCurrentUserId();
+        log.info("收藏广场帖子: userId={}, postId={}", userId, postId);
+        squareService.favoritePost(userId, postId);
+        return Result.success();
+    }
+
+    /**
+     * 取消收藏
+     */
+    @DeleteMapping("/posts/{postId}/favorite")
+    public Result<Void> unfavoritePost(@PathVariable("postId") Long postId) {
+        Long userId = UserContext.getCurrentUserId();
+        log.info("取消收藏广场帖子: userId={}, postId={}", userId, postId);
+        squareService.unfavoritePost(userId, postId);
+        return Result.success();
+    }
+
+    /**
      * 获取帖子评论列表
      */
     @GetMapping("/posts/{postId}/comments")
@@ -275,6 +308,28 @@ public class SquareController {
                                                   @RequestParam(name = "size", defaultValue = "20") Integer size) {
         Long currentUserId = UserContext.getCurrentUserId();
         return squareService.listUserPosts(currentUserId, userId, page, size);
+    }
+
+    /**
+     * 某个用户收藏的帖子列表
+     */
+    @GetMapping("/user/{userId}/favorites")
+    public PageResult<SquarePostVO> listUserFavoritePosts(@PathVariable("userId") Long userId,
+                                                          @RequestParam(name = "page", defaultValue = "1") Integer page,
+                                                          @RequestParam(name = "size", defaultValue = "20") Integer size) {
+        Long currentUserId = UserContext.getCurrentUserId();
+        return squareService.listUserFavoritePosts(currentUserId, userId, page, size);
+    }
+
+    /**
+     * 某个用户点赞过的帖子列表
+     */
+    @GetMapping("/user/{userId}/likes")
+    public PageResult<SquarePostVO> listUserLikedPosts(@PathVariable("userId") Long userId,
+                                                       @RequestParam(name = "page", defaultValue = "1") Integer page,
+                                                       @RequestParam(name = "size", defaultValue = "20") Integer size) {
+        Long currentUserId = UserContext.getCurrentUserId();
+        return squareService.listUserLikedPosts(currentUserId, userId, page, size);
     }
 
     /**

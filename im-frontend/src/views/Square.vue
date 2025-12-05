@@ -4,8 +4,8 @@
       <h2>广场</h2>
       <el-radio-group v-model="activeTab" size="small" @change="handleTabChange">
         <el-radio-button label="all">全部</el-radio-button>
+        <el-radio-button label="hot">热门</el-radio-button>
         <el-radio-button label="follow">我的关注</el-radio-button>
-        <el-radio-button label="mine">我的帖子</el-radio-button>
         <el-radio-button label="notify">
           <span class="tab-label">
             我的广场消息
@@ -94,10 +94,18 @@
           <el-button
             text
             :type="post.liked ? 'primary' : 'default'"
-            :icon="Star"
+            :icon="Pointer"
             @click="toggleLike(post)"
           >
             {{ post.liked ? '已赞' : '点赞' }} {{ post.likeCount || 0 }}
+          </el-button>
+          <el-button
+            text
+            :type="post.favorited ? 'primary' : 'default'"
+            :icon="Star"
+            @click="toggleFavorite(post)"
+          >
+            {{ post.favorited ? '已收藏' : '收藏' }} {{ post.favoriteCount || 0 }}
           </el-button>
           <el-button
             v-if="String(post.userId) === String(currentUserId)"
@@ -370,18 +378,20 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Plus, ChatDotRound, Star } from '@element-plus/icons-vue'
+import { Plus, ChatDotRound, Star, Pointer } from '@element-plus/icons-vue'
 import request from '@/utils/request'
 import { useUserStore } from '@/stores/user'
 import { getFriendList } from '@/api/friend'
 import {
   publishSquarePost,
   getSquarePosts,
-  getMySquarePosts,
+  getHotSquarePosts,
   getFollowSquarePosts,
   deleteSquarePost,
   likeSquarePost,
   unlikeSquarePost,
+  favoriteSquarePost,
+  unfavoriteSquarePost,
   getSquareComments,
   addSquareComment,
   deleteSquareComment,
@@ -493,10 +503,10 @@ const loadPosts = async (reset = false) => {
       hasMore.value = true
     }
     let api
-    if (activeTab.value === 'mine') {
-      api = getMySquarePosts
-    } else if (activeTab.value === 'follow') {
+    if (activeTab.value === 'follow') {
       api = getFollowSquarePosts
+    } else if (activeTab.value === 'hot') {
+      api = getHotSquarePosts
     } else {
       api = getSquarePosts
     }
@@ -854,6 +864,22 @@ const toggleLike = async (post) => {
     }
   } catch (error) {
     console.error('切换点赞状态失败:', error)
+  }
+}
+
+const toggleFavorite = async (post) => {
+  try {
+    if (post.favorited) {
+      await unfavoriteSquarePost(post.postId)
+      post.favorited = false
+      post.favoriteCount = Math.max((post.favoriteCount || 1) - 1, 0)
+    } else {
+      await favoriteSquarePost(post.postId)
+      post.favorited = true
+      post.favoriteCount = (post.favoriteCount || 0) + 1
+    }
+  } catch (error) {
+    console.error('切换收藏状态失败:', error)
   }
 }
 

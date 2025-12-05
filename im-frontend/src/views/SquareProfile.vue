@@ -28,7 +28,13 @@
       </div>
     </div>
 
-    <el-divider>TA 的广场帖子</el-divider>
+    <el-divider>{{ profile.self ? '我的广场' : 'TA 的广场' }}</el-divider>
+
+    <el-tabs v-model="activeTab" class="profile-tabs">
+      <el-tab-pane :label="profile.self ? '我的帖子' : 'TA 的帖子'" name="posts" />
+      <el-tab-pane :label="profile.self ? '我的收藏' : 'TA 的收藏'" name="favorites" />
+      <el-tab-pane :label="profile.self ? '我的点赞' : 'TA 的点赞'" name="likes" />
+    </el-tabs>
 
     <el-scrollbar class="square-list">
       <div
@@ -64,10 +70,17 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { getSquareProfile, getUserSquarePosts, followSquareUser, unfollowSquareUser } from '@/api/square'
+import {
+  getSquareProfile,
+  getUserSquarePosts,
+  getUserFavoriteSquarePosts,
+  getUserLikedSquarePosts,
+  followSquareUser,
+  unfollowSquareUser
+} from '@/api/square'
 
 const route = useRoute()
 
@@ -77,6 +90,7 @@ const page = ref(1)
 const size = ref(10)
 const hasMore = ref(true)
 const loading = ref(false)
+const activeTab = ref('posts')
 
 const formatTime = (time) => {
   if (!time) return ''
@@ -106,7 +120,14 @@ const loadPosts = async (reset = false) => {
       posts.value = []
       hasMore.value = true
     }
-    const res = await getUserSquarePosts(userId, page.value, size.value)
+    let api = getUserSquarePosts
+    if (activeTab.value === 'favorites') {
+      api = getUserFavoriteSquarePosts
+    } else if (activeTab.value === 'likes') {
+      api = getUserLikedSquarePosts
+    }
+
+    const res = await api(userId, page.value, size.value)
     const data = res.data || {}
     const records = data.records || []
     if (records.length < size.value) {
@@ -125,6 +146,10 @@ const loadMore = () => {
   page.value += 1
   loadPosts()
 }
+
+watch(activeTab, () => {
+  loadPosts(true)
+})
 
 const toggleFollow = async () => {
   try {
@@ -192,6 +217,13 @@ onMounted(() => {
 .square-list {
   margin-top: 16px;
   max-height: calc(100vh - 180px);
+}
+
+.profile-tabs {
+  margin-top: 12px;
+  background: #fff;
+  border-radius: 8px;
+  padding: 0 16px;
 }
 
 .square-item {

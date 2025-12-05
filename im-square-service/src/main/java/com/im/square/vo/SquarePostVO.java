@@ -48,8 +48,14 @@ public class SquarePostVO {
     /** 评论数 */
     private Integer commentCount;
 
+    /** 收藏数 */
+    private Integer favoriteCount;
+
     /** 当前用户是否已点赞 */
     private Boolean liked;
+
+    /** 当前用户是否已收藏 */
+    private Boolean favorited;
 
     /** 当前用户是否已关注作者 */
     private Boolean followed;

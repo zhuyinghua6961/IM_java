@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="com.im.square.mapper.SquareLikeMapper">
+<mapper namespace="com.im.square.mapper.SquareFavoriteMapper">
 
-    <resultMap id="BaseResultMap" type="com.im.square.entity.SquareLike">
+    <resultMap id="BaseResultMap" type="com.im.square.entity.SquareFavorite">
         <id column="id" property="id"/>
         <result column="post_id" property="postId"/>
         <result column="user_id" property="userId"/>
@@ -13,47 +13,47 @@
         id, post_id, user_id, create_time
     </sql>
 
-    <!-- 插入点赞记录 -->
-    <insert id="insert" parameterType="com.im.square.entity.SquareLike" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO square_like (post_id, user_id, create_time)
+    <!-- 插入收藏记录 -->
+    <insert id="insert" parameterType="com.im.square.entity.SquareFavorite" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO square_favorite (post_id, user_id, create_time)
         VALUES (#{postId}, #{userId}, #{createTime})
     </insert>
 
-    <!-- 取消点赞 -->
+    <!-- 取消收藏 -->
     <delete id="delete">
-        DELETE FROM square_like
+        DELETE FROM square_favorite
         WHERE post_id = #{postId}
           AND user_id = #{userId}
     </delete>
 
-    <!-- 判断用户是否已对帖子点赞 -->
+    <!-- 判断用户是否已收藏帖子 -->
     <select id="countByPostAndUser" resultType="int">
         SELECT COUNT(*)
-        FROM square_like
+        FROM square_favorite
         WHERE post_id = #{postId}
           AND user_id = #{userId}
     </select>
 
-    <!-- 统计帖子点赞数 -->
+    <!-- 统计帖子收藏数 -->
     <select id="countByPost" resultType="int">
         SELECT COUNT(*)
-        FROM square_like
+        FROM square_favorite
         WHERE post_id = #{postId}
     </select>
 
-    <!-- 查询某个用户点赞过的帖子ID列表，按点赞时间倒序 -->
+    <!-- 查询某个用户收藏的帖子ID列表，按收藏时间倒序 -->
     <select id="selectPostIdsByUser" resultType="long">
         SELECT post_id
-        FROM square_like
+        FROM square_favorite
         WHERE user_id = #{userId}
         ORDER BY create_time DESC
         LIMIT #{offset}, #{limit}
     </select>
 
-    <!-- 统计某个用户点赞过的帖子数量 -->
+    <!-- 统计某个用户收藏的帖子数量 -->
     <select id="countByUser" resultType="long">
         SELECT COUNT(*)
-        FROM square_like
+        FROM square_favorite
         WHERE user_id = #{userId}
     </select>
 

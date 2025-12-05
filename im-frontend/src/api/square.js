@@ -9,6 +9,15 @@ export function publishSquarePost(data) {
   })
 }
 
+// 获取热门广场帖子列表（按热度排序）
+export function getHotSquarePosts(page = 1, size = 20) {
+  return request({
+    url: '/square/posts/hot',
+    method: 'get',
+    params: { page, size }
+  })
+}
+
 // 获取广场帖子列表
 export function getSquarePosts(page = 1, size = 20) {
   return request({
@@ -34,6 +43,22 @@ export function deleteSquarePost(postId) {
   })
 }
 
+// 收藏帖子
+export function favoriteSquarePost(postId) {
+  return request({
+    url: `/square/posts/${postId}/favorite`,
+    method: 'post'
+  })
+}
+
+// 取消收藏
+export function unfavoriteSquarePost(postId) {
+  return request({
+    url: `/square/posts/${postId}/favorite`,
+    method: 'delete'
+  })
+}
+
 // 个人广场主页信息
 export function getSquareProfile(userId) {
   return request({
@@ -46,6 +71,24 @@ export function getSquareProfile(userId) {
 export function getUserSquarePosts(userId, page = 1, size = 20) {
   return request({
     url: `/square/user/${userId}/posts`,
+    method: 'get',
+    params: { page, size }
+  })
+}
+
+// 某个用户收藏的广场帖子
+export function getUserFavoriteSquarePosts(userId, page = 1, size = 20) {
+  return request({
+    url: `/square/user/${userId}/favorites`,
+    method: 'get',
+    params: { page, size }
+  })
+}
+
+// 某个用户点赞过的广场帖子
+export function getUserLikedSquarePosts(userId, page = 1, size = 20) {
+  return request({
+    url: `/square/user/${userId}/likes`,
     method: 'get',
     params: { page, size }
   })

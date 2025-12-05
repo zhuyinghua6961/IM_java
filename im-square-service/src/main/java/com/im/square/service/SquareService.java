@@ -21,6 +21,11 @@ public interface SquareService {
     PageResult<SquarePostVO> listPublicPosts(Long currentUserId, int page, int size);
 
     /**
+     * 按热度排序的公开广场帖子列表
+     */
+    PageResult<SquarePostVO> listHotPosts(Long currentUserId, int page, int size);
+
+    /**
      * 获取我关注的用户的广场帖子（基于关注关系的 feed 流）
      */
     PageResult<SquarePostVO> listFollowFeed(Long currentUserId, int page, int size);
@@ -43,6 +48,10 @@ public interface SquareService {
 
     void unlikePost(Long userId, Long postId);
 
+    void favoritePost(Long userId, Long postId);
+
+    void unfavoritePost(Long userId, Long postId);
+
     PageResult<SquareCommentVO> listComments(Long postId, int page, int size);
 
     Long addComment(Long userId, Long postId, String content, Long parentId);
@@ -54,6 +63,16 @@ public interface SquareService {
     SquareProfileVO getUserSquareProfile(Long currentUserId, Long targetUserId);
 
     PageResult<SquarePostVO> listUserPosts(Long currentUserId, Long targetUserId, int page, int size);
+
+    /**
+     * 某个用户收藏的帖子列表
+     */
+    PageResult<SquarePostVO> listUserFavoritePosts(Long currentUserId, Long targetUserId, int page, int size);
+
+    /**
+     * 某个用户点赞过的帖子列表
+     */
+    PageResult<SquarePostVO> listUserLikedPosts(Long currentUserId, Long targetUserId, int page, int size);
 
     /**
      * 关注某个广场用户（单向关注，不是好友）
