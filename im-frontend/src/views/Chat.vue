@@ -213,7 +213,23 @@
                     </a>
                   </template>
                   <template v-else>
-                    <span v-html="formatMessageContent(msg.content)"></span>
+                    <template v-if="isImageTextMessage(msg)">
+                      <img
+                        class="image-message"
+                        :src="getUrlFromTextMessage(msg)"
+                        @click.stop="previewImage(msg)"
+                      />
+                    </template>
+                    <template v-else-if="isVideoTextMessage(msg)">
+                      <video
+                        class="video-message"
+                        :src="getUrlFromTextMessage(msg)"
+                        controls
+                      />
+                    </template>
+                    <template v-else>
+                      <span v-html="formatMessageContent(msg.content)"></span>
+                    </template>
                   </template>
                   <!-- 悬停操作菜单 -->
                   <div 
@@ -1679,6 +1695,15 @@ const getVoiceMeta = (message) => {
   }
 }
 
+const extractFirstUrlFromText = (content) => {
+  if (!content) return ''
+  const text = String(content).trim()
+  const match = text.match(/https?:\/\/\S+/i)
+  if (!match) return ''
+  // 去掉末尾常见的标点符号
+  return match[0].replace(/[)、。！？）\]]+$/u, '')
+}
+
 const getMediaUrlFromContent = (message) => {
   if (!message || !message.content) return ''
   try {
@@ -1692,8 +1717,38 @@ const getMediaUrlFromContent = (message) => {
   } catch (error) {
     console.warn('解析媒体消息内容失败:', error)
   }
+
+  if (typeof message.content === 'string') {
+    return extractFirstUrlFromText(message.content)
+  }
   return ''
 }
+
+const isImageUrl = (url) => {
+  if (!url) return false
+  const clean = url.split('?')[0].toLowerCase()
+  return /\.(png|jpe?g|gif|webp|bmp|svg)$/.test(clean)
+}
+
+const isVideoUrl = (url) => {
+  if (!url) return false
+  const clean = url.split('?')[0].toLowerCase()
+  return /\.(mp4|webm|ogg|mov|m4v)$/.test(clean)
+}
+
+const isImageTextMessage = (message) => {
+  if (!message || message.msgType !== 1) return false
+  const url = extractFirstUrlFromText(message.content)
+  return isImageUrl(url)
+}
+
+const isVideoTextMessage = (message) => {
+  if (!message || message.msgType !== 1) return false
+  const url = extractFirstUrlFromText(message.content)
+  return isVideoUrl(url)
+}
+
+const getUrlFromTextMessage = (message) => extractFirstUrlFromText(message?.content || '')
 
 const getFileName = (message) => {
   if (!message) return '文件'

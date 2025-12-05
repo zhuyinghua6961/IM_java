@@ -21,11 +21,12 @@
       </el-button>
     </div>
 
-    <el-scrollbar v-if="activeTab !== 'notify'" class="square-list">
+    <el-scrollbar v-if="activeTab !== 'notify'" class="square-list" ref="postScrollbar">
       <div
         v-for="post in posts"
         :key="post.postId"
         class="square-item"
+        :id="'square-post-' + post.postId"
       >
         <div class="square-user">
           <el-avatar :size="40" :src="post.avatar" @click="goProfile(post.userId)" style="cursor: pointer;">
@@ -375,7 +376,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Plus, ChatDotRound, Star, Pointer } from '@element-plus/icons-vue'
@@ -416,6 +417,8 @@ const page = ref(1)
 const size = ref(10)
 const hasMore = ref(true)
 const loading = ref(false)
+
+const postScrollbar = ref(null)
 
 // 图片九宫格展开状态
 const expandedPostId = ref(null)
@@ -634,18 +637,21 @@ const handleClickNotification = async (item) => {
   const postId = item.postId
   if (postId) {
     try {
-      const res = await getSquarePostDetail(postId)
-      const data = res.data || null
-      if (data) {
-        // 使用帖子详情替换当前列表，方便从通知直接查看帖子
-        activeTab.value = 'all'
-        page.value = 1
-        hasMore.value = false
-        posts.value = [data]
-        // 评论类通知，自动打开评论对话框
-        if (item.actionType === 'COMMENT') {
-          await openComments(data)
-        }
+      // 切换到全部帖子 Tab
+      activeTab.value = 'all'
+      // 重置列表并加载第一页
+      await loadPosts(true)
+
+      // 继续加载后续页面，直到包含目标帖子或到达末尾（有限次数）
+      await ensurePostLoaded(postId)
+
+      // 滚动到目标帖子位置
+      await scrollToPost(postId)
+
+      const targetPost = posts.value.find(p => p.postId === postId)
+      // 评论类通知，自动打开评论对话框
+      if (item.actionType === 'COMMENT' && targetPost) {
+        await openComments(targetPost)
       }
     } catch (error) {
       console.error('根据广场通知加载帖子详情失败:', error)
@@ -664,6 +670,31 @@ const handleTabChange = () => {
     loadNotifications(true)
   } else {
     loadPosts(true)
+  }
+}
+
+const ensurePostLoaded = async (postId) => {
+  if (!postId) return
+  let guard = 0
+  while (!posts.value.some(p => p.postId === postId) && hasMore.value && guard < 10) {
+    page.value += 1
+    await loadPosts()
+    guard += 1
+  }
+}
+
+const scrollToPost = async (postId) => {
+  if (!postId) return
+  await nextTick()
+  if (!postScrollbar.value || !postScrollbar.value.wrapRef) return
+  const container = postScrollbar.value.wrapRef
+  const el = document.getElementById(`square-post-${postId}`)
+  if (!el) return
+  const offsetTop = el.offsetTop - container.offsetTop
+  try {
+    postScrollbar.value.setScrollTop(offsetTop)
+  } catch (error) {
+    console.error('滚动到目标帖子失败:', error)
   }
 }
 
