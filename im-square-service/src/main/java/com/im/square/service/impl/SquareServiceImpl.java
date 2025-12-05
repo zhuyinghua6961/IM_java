@@ -63,6 +63,12 @@ public class SquareServiceImpl implements SquareService {
     private static final String PUBLIC_POST_LIST_KEY_PREFIX = "square:post:list:page:";
     private static final long PUBLIC_POST_LIST_EXPIRE_MINUTES = 5L;
 
+    private static final String HOT_POST_LIST_KEY_PREFIX = "square:post:hot:page:";
+    private static final long HOT_POST_LIST_EXPIRE_MINUTES = 5L;
+
+    private static final String HOT_POST_ZSET_KEY = "square:post:hot:zset";
+    private static final long HOT_POST_ZSET_MAX_SIZE = 500L;
+
     private static final String FOLLOW_FEED_KEY_PREFIX = "square:feed:user:";
     private static final long FOLLOW_FEED_MAX_SIZE = 500L;
 
@@ -217,10 +223,82 @@ public class SquareServiceImpl implements SquareService {
     public PageResult<SquarePostVO> listHotPosts(Long currentUserId, int page, int size) {
         if (page <= 0) page = 1;
         if (size <= 0) size = 20;
-        int offset = (page - 1) * size;
+        long start = (long) (page - 1) * size;
+        long end = start + size - 1;
 
-        List<SquarePost> posts = postMapper.selectPublicHotList(offset, size);
-        long total = postMapper.countPublic();
+        Set<String> idStrSet;
+        long total = 0L;
+        try {
+            idStrSet = redisTemplate.opsForZSet().reverseRange(HOT_POST_ZSET_KEY, start, end);
+            Long zcard = redisTemplate.opsForZSet().size(HOT_POST_ZSET_KEY);
+            if (zcard != null) {
+                total = zcard;
+            }
+        } catch (Exception e) {
+            log.warn("读取热门帖子ZSet失败，降级为数据库查询, page={}, size={}", page, size, e);
+            idStrSet = Collections.emptySet();
+        }
+
+        // 如果ZSet暂无数据，退回到数据库排序逻辑，保证接口可用
+        if (idStrSet == null || idStrSet.isEmpty()) {
+            int offset = (page - 1) * size;
+            List<SquarePost> posts = postMapper.selectPublicHotList(offset, size);
+            long dbTotal = postMapper.countPublic();
+
+            Set<Long> followeeIdSet = Collections.emptySet();
+            if (currentUserId != null) {
+                try {
+                    List<Long> followeeIds = followMapper.selectFolloweeIds(currentUserId);
+                    if (followeeIds != null && !followeeIds.isEmpty()) {
+                        followeeIdSet = new HashSet<>(followeeIds);
+                    }
+                } catch (Exception e) {
+                    log.warn("查询广场关注列表失败(热门-DB), userId={}", currentUserId, e);
+                }
+            }
+
+            List<SquarePostVO> records = new ArrayList<>();
+            for (SquarePost post : posts) {
+                if (!isPostVisibleToUser(post, currentUserId)) {
+                    continue;
+                }
+                boolean liked = false;
+                boolean favorited = false;
+                if (currentUserId != null) {
+                    liked = likeMapper.countByPostAndUser(post.getId(), currentUserId) > 0;
+                    favorited = favoriteMapper.countByPostAndUser(post.getId(), currentUserId) > 0;
+                }
+                boolean followed = currentUserId != null && followeeIdSet.contains(post.getUserId());
+                SquarePostVO vo = toPostVO(post, liked, followed);
+                int favCount = favoriteMapper.countByPost(post.getId());
+                vo.setFavoriteCount(favCount);
+                vo.setFavorited(favorited);
+                records.add(vo);
+            }
+
+            return PageResult.of(records, dbTotal, (long) size, (long) page);
+        }
+
+        List<Long> ids = new ArrayList<>();
+        for (String s : idStrSet) {
+            try {
+                ids.add(Long.valueOf(s));
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        if (ids.isEmpty()) {
+            return PageResult.of(Collections.emptyList(), total, (long) size, (long) page);
+        }
+
+        List<SquarePost> posts = postMapper.selectByIds(ids);
+        if (posts == null || posts.isEmpty()) {
+            return PageResult.of(Collections.emptyList(), total, (long) size, (long) page);
+        }
+
+        Map<Long, SquarePost> postMap = new HashMap<>();
+        for (SquarePost post : posts) {
+            postMap.put(post.getId(), post);
+        }
 
         // 当前用户关注的作者ID集合，用于标记 followed
         Set<Long> followeeIdSet = Collections.emptySet();
@@ -231,12 +309,21 @@ public class SquareServiceImpl implements SquareService {
                     followeeIdSet = new HashSet<>(followeeIds);
                 }
             } catch (Exception e) {
-                log.warn("查询广场关注列表失败(热门), userId={}", currentUserId, e);
+                log.warn("查询广场关注列表失败(热门-ZSet), userId={}", currentUserId, e);
             }
         }
 
+        LocalDateTime threeDaysAgo = LocalDateTime.now().minusDays(3);
+
         List<SquarePostVO> records = new ArrayList<>();
-        for (SquarePost post : posts) {
+        for (Long id : ids) {
+            SquarePost post = postMap.get(id);
+            if (post == null) {
+                continue;
+            }
+            if (post.getCreateTime() == null || post.getCreateTime().isBefore(threeDaysAgo)) {
+                continue;
+            }
             if (!isPostVisibleToUser(post, currentUserId)) {
                 continue;
             }
@@ -490,11 +577,15 @@ public class SquareServiceImpl implements SquareService {
         fav.setUserId(userId);
         fav.setCreateTime(LocalDateTime.now());
         favoriteMapper.insert(fav);
+        adjustHotScore(post, 4D);
+        clearPublicPostListCache();
     }
 
     @Override
     public void unfavoritePost(Long userId, Long postId) {
         favoriteMapper.delete(postId, userId);
+        adjustHotScore(postId, -4D);
+        clearPublicPostListCache();
     }
 
     @Override
@@ -578,6 +669,7 @@ public class SquareServiceImpl implements SquareService {
         postMapper.updateCounters(postId, 1, 0);
         // 发送点赞通知
         remoteSquareNotificationService.sendLikeNotification(post, userId);
+        adjustHotScore(post, 2D);
         clearPublicPostListCache();
     }
 
@@ -591,6 +683,7 @@ public class SquareServiceImpl implements SquareService {
         int rows = likeMapper.delete(postId, userId);
         if (rows > 0) {
             postMapper.updateCounters(postId, -1, 0);
+            adjustHotScore(post, -2D);
         }
         clearPublicPostListCache();
     }
@@ -653,6 +746,7 @@ public class SquareServiceImpl implements SquareService {
         postMapper.updateCounters(postId, 0, 1);
         // 发送评论通知
         remoteSquareNotificationService.sendCommentNotification(post, userId, comment.getId(), content);
+        adjustHotScore(post, 3D);
         clearPublicPostListCache();
         return comment.getId();
     }
@@ -669,14 +763,69 @@ public class SquareServiceImpl implements SquareService {
         int rows = commentMapper.softDelete(commentId, userId);
         if (rows > 0) {
             postMapper.updateCounters(comment.getPostId(), 0, -1);
+            adjustHotScore(comment.getPostId(), -3D);
             clearPublicPostListCache();
         }
     }
 
+    private void adjustHotScore(SquarePost post, double delta) {
+        if (post == null || post.getId() == null) {
+            return;
+        }
+        try {
+            LocalDateTime threeDaysAgo = LocalDateTime.now().minusDays(3);
+            if (post.getCreateTime() == null || post.getCreateTime().isBefore(threeDaysAgo)) {
+                redisTemplate.opsForZSet().remove(HOT_POST_ZSET_KEY, String.valueOf(post.getId()));
+                return;
+            }
+
+            String member = String.valueOf(post.getId());
+            redisTemplate.opsForZSet().incrementScore(HOT_POST_ZSET_KEY, member, delta);
+
+            Long size = redisTemplate.opsForZSet().size(HOT_POST_ZSET_KEY);
+            if (size != null && size > HOT_POST_ZSET_MAX_SIZE) {
+                long removeCount = size - HOT_POST_ZSET_MAX_SIZE;
+                if (removeCount > 0) {
+                    redisTemplate.opsForZSet().removeRange(HOT_POST_ZSET_KEY, 0, removeCount - 1);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("调整热门帖子热度失败, postId={}", post.getId(), e);
+        }
+    }
+
+    private void adjustHotScore(Long postId, double delta) {
+        if (postId == null) {
+            return;
+        }
+        SquarePost post = postMapper.selectById(postId);
+        if (post == null || post.getStatus() == null || post.getStatus() == 0 ||
+                post.getAuditStatus() == null || post.getAuditStatus() != 1) {
+            try {
+                redisTemplate.opsForZSet().remove(HOT_POST_ZSET_KEY, String.valueOf(postId));
+            } catch (Exception e) {
+                log.warn("从热门帖子ZSet移除失效帖子失败, postId={}", postId, e);
+            }
+            return;
+        }
+        adjustHotScore(post, delta);
+    }
+
     private void clearPublicPostListCache() {
         try {
-            Set<String> keys = redisTemplate.keys(PUBLIC_POST_LIST_KEY_PREFIX + "*");
-            if (keys != null && !keys.isEmpty()) {
+            Set<String> keys = new HashSet<>();
+
+            Set<String> publicKeys = redisTemplate.keys(PUBLIC_POST_LIST_KEY_PREFIX + "*");
+            if (publicKeys != null && !publicKeys.isEmpty()) {
+                keys.addAll(publicKeys);
+            }
+
+            Set<String> hotKeys = redisTemplate.keys(HOT_POST_LIST_KEY_PREFIX + "*");
+            if (hotKeys != null && !hotKeys.isEmpty()) {
+                keys.addAll(hotKeys);
+            }
+
+            if (!keys.isEmpty()) {
                 redisTemplate.delete(keys);
             }
         } catch (Exception e) {
