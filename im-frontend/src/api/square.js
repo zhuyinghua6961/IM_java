@@ -18,12 +18,19 @@ export function getHotSquarePosts(page = 1, size = 20) {
   })
 }
 
-// 获取广场帖子列表
-export function getSquarePosts(page = 1, size = 20) {
+// 获取广场帖子列表（支持关键字和标签筛选）
+export function getSquarePosts(page = 1, size = 20, keyword = '', tags = []) {
+  const params = { page, size }
+  if (keyword && String(keyword).trim()) {
+    params.keyword = String(keyword).trim()
+  }
+  if (Array.isArray(tags) && tags.length > 0) {
+    params.tags = tags.join(',')
+  }
   return request({
     url: '/square/posts',
     method: 'get',
-    params: { page, size }
+    params
   })
 }
 

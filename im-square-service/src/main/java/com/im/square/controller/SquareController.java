@@ -84,14 +84,45 @@ public class SquareController {
     }
 
     /**
-     * 获取广场帖子列表
+     * 获取广场帖子列表（支持关键字、标签搜索）
      */
     @GetMapping("/posts")
     public PageResult<SquarePostVO> listPosts(@RequestParam(name = "page", defaultValue = "1") Integer page,
-                                              @RequestParam(name = "size", defaultValue = "20") Integer size) {
+                                              @RequestParam(name = "size", defaultValue = "20") Integer size,
+                                              @RequestParam(name = "keyword", required = false) String keyword,
+                                              @RequestParam(name = "tags", required = false) String tagsStr) {
         Long userId = UserContext.getCurrentUserId();
-        log.info("获取广场帖子列表: userId={}, page={}, size={}", userId, page, size);
-        return squareService.listPublicPosts(userId, page, size);
+
+        // 解析标签参数（逗号分隔）
+        java.util.List<String> tags = null;
+        if (tagsStr != null) {
+            String s = tagsStr.trim();
+            if (!s.isEmpty()) {
+                tags = new java.util.ArrayList<>();
+                for (String part : s.split(",")) {
+                    if (part == null) continue;
+                    String t = part.trim();
+                    if (!t.isEmpty()) {
+                        tags.add(t);
+                    }
+                }
+                if (tags.isEmpty()) {
+                    tags = null;
+                }
+            }
+        }
+
+        String kw = (keyword == null) ? null : keyword.trim();
+        boolean hasKeyword = kw != null && !kw.isEmpty();
+        boolean hasTags = tags != null && !tags.isEmpty();
+
+        log.info("获取广场帖子列表: userId={}, page={}, size={}, keyword={}, tags={}", userId, page, size, kw, tags);
+
+        if (!hasKeyword && !hasTags) {
+            return squareService.listPublicPosts(userId, page, size);
+        } else {
+            return squareService.searchPublicPosts(userId, kw, tags, page, size);
+        }
     }
 
     /**

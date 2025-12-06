@@ -21,6 +21,36 @@
       </el-button>
     </div>
 
+    <div class="square-search-bar">
+      <el-input
+        v-model="searchKeyword"
+        placeholder="搜索帖子内容 / 标题"
+        clearable
+        style="max-width: 260px;"
+        @keyup.enter="handleSearch"
+      />
+      <el-select
+        v-model="searchTags"
+        multiple
+        filterable
+        allow-create
+        default-first-option
+        placeholder="选择或输入标签"
+        style="min-width: 260px; margin-left: 8px;"
+      >
+        <el-option
+          v-for="tag in allTagOptions"
+          :key="tag"
+          :label="tag"
+          :value="tag"
+        />
+      </el-select>
+      <el-button type="primary" size="small" style="margin-left: 8px;" @click="handleSearch">
+        搜索
+      </el-button>
+      <el-button size="small" @click="resetSearch">重置</el-button>
+    </div>
+
     <el-scrollbar v-if="activeTab !== 'notify'" class="square-list" ref="postScrollbar">
       <div
         v-for="post in posts"
@@ -65,6 +95,16 @@
         <div class="square-content">
           <h3 v-if="post.title" class="post-title">{{ post.title }}</h3>
           <p class="post-text">{{ post.content }}</p>
+          <div v-if="post.tags && post.tags.length" class="post-tags">
+            <el-tag
+              v-for="tag in post.tags"
+              :key="tag"
+              size="small"
+              class="post-tag-item"
+            >
+              {{ tag }}
+            </el-tag>
+          </div>
           <div v-if="post.images && post.images.length" class="post-images">
             <div
               v-for="(img, index) in getDisplayImages(post)"
@@ -214,6 +254,23 @@
             show-word-limit
             placeholder="分享点什么..."
           />
+        </el-form-item>
+        <el-form-item label="标签">
+          <el-select
+            v-model="publishForm.tags"
+            multiple
+            filterable
+            allow-create
+            default-first-option
+            placeholder="选择或输入标签"
+          >
+            <el-option
+              v-for="tag in allTagOptions"
+              :key="tag"
+              :label="tag"
+              :value="tag"
+            />
+          </el-select>
         </el-form-item>
         <el-form-item label="图片/视频">
           <div class="media-upload">
@@ -404,7 +461,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed, nextTick } from 'vue'
+import { ref, onMounted, computed, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Plus, ChatDotRound, Star, Pointer } from '@element-plus/icons-vue'
@@ -458,6 +515,7 @@ const editingPostId = ref(null)
 const publishForm = ref({
   title: '',
   content: '',
+  tags: [],
   visibleType: 0,
   excludeUserIds: []
 })
@@ -486,6 +544,11 @@ const isVideoUploadDisabled = computed(() => {
 
 const friendOptions = ref([])
 const friendLoading = ref(false)
+
+// 搜索关键字和标签
+const allTagOptions = ref(['日常', '吐槽', '求助', '分享', '照片', '视频'])
+const searchKeyword = ref('')
+const searchTags = ref([])
 
 const showCommentDialog = ref(false)
 const currentPostId = ref(null)
@@ -544,15 +607,14 @@ const loadPosts = async (reset = false) => {
       posts.value = []
       hasMore.value = true
     }
-    let api
+    let res
     if (activeTab.value === 'follow') {
-      api = getFollowSquarePosts
+      res = await getFollowSquarePosts(page.value, size.value)
     } else if (activeTab.value === 'hot') {
-      api = getHotSquarePosts
+      res = await getHotSquarePosts(page.value, size.value)
     } else {
-      api = getSquarePosts
+      res = await getSquarePosts(page.value, size.value, searchKeyword.value, searchTags.value)
     }
-    const res = await api(page.value, size.value)
     const data = res.data || {}
     const records = data.records || []
     if (records.length < size.value) {
@@ -588,6 +650,29 @@ const goProfile = (userId) => {
   router.push(`/square/profile/${userId}`)
 }
 
+const handleSearch = () => {
+  activeTab.value = 'all'
+  loadPosts(true)
+}
+
+const resetSearch = () => {
+  searchKeyword.value = ''
+  searchTags.value = []
+  handleSearch()
+}
+
+watch(
+  () => [searchKeyword.value, searchTags.value.length, activeTab.value],
+  ([kw, tagLen, tab]) => {
+    if (tab !== 'all') return
+    const hasKeyword = kw && String(kw).trim().length > 0
+    const hasTags = tagLen > 0
+    if (!hasKeyword && !hasTags) {
+      loadPosts(true)
+    }
+  }
+)
+
 const openEditPost = (post) => {
   if (!post) return
   isEditingPost.value = true
@@ -595,6 +680,7 @@ const openEditPost = (post) => {
   publishForm.value = {
     title: post.title || '',
     content: post.content || '',
+    tags: Array.isArray(post.tags) ? [...post.tags] : [],
     visibleType: typeof post.visibleType === 'number' ? post.visibleType : 0,
     excludeUserIds: Array.isArray(post.excludeUserIds) ? [...post.excludeUserIds] : []
   }
@@ -798,7 +884,7 @@ const handlePublish = async () => {
       content: publishForm.value.content,
       images: imageUrls.value,
       video: videoUrl.value || null,
-      tags: [],
+      tags: publishForm.value.tags || [],
       visibleType: publishForm.value.visibleType,
       excludeUserIds: publishForm.value.excludeUserIds || []
     }

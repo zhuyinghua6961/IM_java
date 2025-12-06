@@ -96,6 +96,29 @@
         LIMIT #{offset}, #{limit}
     </select>
 
+    <!-- 按关键字和标签搜索公开帖子列表 -->
+    <select id="searchPublic" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM square_post
+        WHERE status = 1
+          AND audit_status = 1
+        <if test="keyword != null and keyword != ''">
+          AND (
+            title LIKE CONCAT('%', #{keyword}, '%')
+            OR content LIKE CONCAT('%', #{keyword}, '%')
+          )
+        </if>
+        <if test="tags != null and tags.size() > 0">
+          AND (
+            <foreach collection="tags" item="t" separator=" OR ">
+              tags LIKE CONCAT('%\"', #{t}, '\"%')
+            </foreach>
+          )
+        </if>
+        ORDER BY create_time DESC
+        LIMIT #{offset}, #{limit}
+    </select>
+
     <!-- 按热度排序的公开广场列表（最近3天，热度=点赞*2 + 评论*3 + 收藏*4，时间次之） -->
     <select id="selectPublicHotList" resultMap="BaseResultMap">
         SELECT <include refid="Base_Column_List"/>
@@ -121,6 +144,26 @@
         FROM square_post
         WHERE status = 1
           AND audit_status = 1
+    </select>
+
+    <select id="countSearchPublic" resultType="long">
+        SELECT COUNT(*)
+        FROM square_post
+        WHERE status = 1
+          AND audit_status = 1
+        <if test="keyword != null and keyword != ''">
+          AND (
+            title LIKE CONCAT('%', #{keyword}, '%')
+            OR content LIKE CONCAT('%', #{keyword}, '%')
+          )
+        </if>
+        <if test="tags != null and tags.size() > 0">
+          AND (
+            <foreach collection="tags" item="t" separator=" OR ">
+              tags LIKE CONCAT('%\"', #{t}, '\"%')
+            </foreach>
+          )
+        </if>
     </select>
 
     <!-- 查询某用户发布的帖子列表（排除删除） -->

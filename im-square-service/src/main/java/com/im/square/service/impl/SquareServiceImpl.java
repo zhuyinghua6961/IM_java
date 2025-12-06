@@ -220,6 +220,68 @@ public class SquareServiceImpl implements SquareService {
     }
 
     @Override
+    public PageResult<SquarePostVO> searchPublicPosts(Long currentUserId,
+                                                      String keyword,
+                                                      List<String> tags,
+                                                      int page,
+                                                      int size) {
+        if (page <= 0) page = 1;
+        if (size <= 0) size = 20;
+        int offset = (page - 1) * size;
+
+        String trimmedKeyword = (keyword == null) ? null : keyword.trim();
+        if (trimmedKeyword != null && trimmedKeyword.isEmpty()) {
+            trimmedKeyword = null;
+        }
+        List<String> tagList = (tags == null || tags.isEmpty()) ? null : tags;
+
+        List<SquarePost> posts;
+        long total;
+        try {
+            posts = postMapper.searchPublic(trimmedKeyword, tagList, offset, size);
+            total = postMapper.countSearchPublic(trimmedKeyword, tagList);
+        } catch (Exception e) {
+            log.warn("搜索广场帖子失败，降级为空结果, keyword={}, tags={}", trimmedKeyword, tagList, e);
+            posts = Collections.emptyList();
+            total = 0L;
+        }
+
+        // 当前用户关注的作者ID集合，用于标记 followed
+        Set<Long> followeeIdSet = Collections.emptySet();
+        if (currentUserId != null) {
+            try {
+                List<Long> followeeIds = followMapper.selectFolloweeIds(currentUserId);
+                if (followeeIds != null && !followeeIds.isEmpty()) {
+                    followeeIdSet = new HashSet<>(followeeIds);
+                }
+            } catch (Exception e) {
+                log.warn("查询广场关注列表失败(搜索), userId={}", currentUserId, e);
+            }
+        }
+
+        List<SquarePostVO> records = new ArrayList<>();
+        for (SquarePost post : posts) {
+            if (!isPostVisibleToUser(post, currentUserId)) {
+                continue;
+            }
+            boolean liked = false;
+            boolean favorited = false;
+            if (currentUserId != null) {
+                liked = likeMapper.countByPostAndUser(post.getId(), currentUserId) > 0;
+                favorited = favoriteMapper.countByPostAndUser(post.getId(), currentUserId) > 0;
+            }
+            boolean followed = currentUserId != null && followeeIdSet.contains(post.getUserId());
+            SquarePostVO vo = toPostVO(post, liked, followed);
+            int favCount = favoriteMapper.countByPost(post.getId());
+            vo.setFavoriteCount(favCount);
+            vo.setFavorited(favorited);
+            records.add(vo);
+        }
+
+        return PageResult.of(records, total, (long) size, (long) page);
+    }
+
+    @Override
     public PageResult<SquarePostVO> listHotPosts(Long currentUserId, int page, int size) {
         if (page <= 0) page = 1;
         if (size <= 0) size = 20;

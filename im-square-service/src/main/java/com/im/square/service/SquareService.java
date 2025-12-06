@@ -21,6 +21,15 @@ public interface SquareService {
     PageResult<SquarePostVO> listPublicPosts(Long currentUserId, int page, int size);
 
     /**
+     * 按关键字和标签搜索公开广场帖子
+     */
+    PageResult<SquarePostVO> searchPublicPosts(Long currentUserId,
+                                               String keyword,
+                                               java.util.List<String> tags,
+                                               int page,
+                                               int size);
+
+    /**
      * 按热度排序的公开广场帖子列表
      */
     PageResult<SquarePostVO> listHotPosts(Long currentUserId, int page, int size);
