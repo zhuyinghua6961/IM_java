@@ -223,6 +223,10 @@ public class SquareServiceImpl implements SquareService {
     public PageResult<SquarePostVO> searchPublicPosts(Long currentUserId,
                                                       String keyword,
                                                       List<String> tags,
+                                                      Boolean hasImage,
+                                                      Boolean hasVideo,
+                                                      Integer visibleType,
+                                                      String sort,
                                                       int page,
                                                       int size) {
         if (page <= 0) page = 1;
@@ -237,11 +241,16 @@ public class SquareServiceImpl implements SquareService {
 
         List<SquarePost> posts;
         long total;
+        String sortVal = (sort == null) ? null : sort.trim();
+        if (sortVal != null && sortVal.isEmpty()) {
+            sortVal = null;
+        }
         try {
-            posts = postMapper.searchPublic(trimmedKeyword, tagList, offset, size);
-            total = postMapper.countSearchPublic(trimmedKeyword, tagList);
+            posts = postMapper.searchPublic(trimmedKeyword, tagList, hasImage, hasVideo, visibleType, sortVal, offset, size);
+            total = postMapper.countSearchPublic(trimmedKeyword, tagList, hasImage, hasVideo, visibleType);
         } catch (Exception e) {
-            log.warn("搜索广场帖子失败，降级为空结果, keyword={}, tags={}", trimmedKeyword, tagList, e);
+            log.warn("搜索广场帖子失败，降级为空结果, keyword={}, tags={}, hasImage={}, hasVideo={}, visibleType={}, sort={}",
+                    trimmedKeyword, tagList, hasImage, hasVideo, visibleType, sortVal, e);
             posts = Collections.emptyList();
             total = 0L;
         }

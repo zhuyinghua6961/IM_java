@@ -84,13 +84,17 @@ public class SquareController {
     }
 
     /**
-     * 获取广场帖子列表（支持关键字、标签搜索）
+     * 获取广场帖子列表（支持关键字、标签、筛选和排序）
      */
     @GetMapping("/posts")
     public PageResult<SquarePostVO> listPosts(@RequestParam(name = "page", defaultValue = "1") Integer page,
                                               @RequestParam(name = "size", defaultValue = "20") Integer size,
                                               @RequestParam(name = "keyword", required = false) String keyword,
-                                              @RequestParam(name = "tags", required = false) String tagsStr) {
+                                              @RequestParam(name = "tags", required = false) String tagsStr,
+                                              @RequestParam(name = "hasImage", required = false) Boolean hasImage,
+                                              @RequestParam(name = "hasVideo", required = false) Boolean hasVideo,
+                                              @RequestParam(name = "visibleType", required = false) Integer visibleType,
+                                              @RequestParam(name = "sort", required = false) String sort) {
         Long userId = UserContext.getCurrentUserId();
 
         // 解析标签参数（逗号分隔）
@@ -116,12 +120,23 @@ public class SquareController {
         boolean hasKeyword = kw != null && !kw.isEmpty();
         boolean hasTags = tags != null && !tags.isEmpty();
 
-        log.info("获取广场帖子列表: userId={}, page={}, size={}, keyword={}, tags={}", userId, page, size, kw, tags);
+        String sortVal = (sort == null) ? null : sort.trim();
+        if (sortVal != null && sortVal.isEmpty()) {
+            sortVal = null;
+        }
 
-        if (!hasKeyword && !hasTags) {
+        boolean hasFilter = (hasImage != null && hasImage)
+                || (hasVideo != null && hasVideo)
+                || (visibleType != null)
+                || (sortVal != null);
+
+        log.info("获取广场帖子列表: userId={}, page={}, size={}, keyword={}, tags={}, hasImage={}, hasVideo={}, visibleType={}, sort={}",
+                userId, page, size, kw, tags, hasImage, hasVideo, visibleType, sortVal);
+
+        if (!hasKeyword && !hasTags && !hasFilter) {
             return squareService.listPublicPosts(userId, page, size);
         } else {
-            return squareService.searchPublicPosts(userId, kw, tags, page, size);
+            return squareService.searchPublicPosts(userId, kw, tags, hasImage, hasVideo, visibleType, sortVal, page, size);
         }
     }
 

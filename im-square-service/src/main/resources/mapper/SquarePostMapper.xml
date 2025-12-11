@@ -115,7 +115,27 @@
             </foreach>
           )
         </if>
-        ORDER BY create_time DESC
+        <if test="hasImage != null and hasImage">
+          AND images IS NOT NULL AND images != ''
+        </if>
+        <if test="hasVideo != null and hasVideo">
+          AND video IS NOT NULL AND video != ''
+        </if>
+        <if test="visibleType != null">
+          AND visible_type = #{visibleType}
+        </if>
+        ORDER BY
+        <choose>
+          <when test="sort == 'comment'">
+            comment_count DESC, create_time DESC
+          </when>
+          <when test="sort == 'like'">
+            like_count DESC, create_time DESC
+          </when>
+          <otherwise>
+            create_time DESC
+          </otherwise>
+        </choose>
         LIMIT #{offset}, #{limit}
     </select>
 
@@ -163,6 +183,15 @@
               tags LIKE CONCAT('%\"', #{t}, '\"%')
             </foreach>
           )
+        </if>
+        <if test="hasImage != null and hasImage">
+          AND images IS NOT NULL AND images != ''
+        </if>
+        <if test="hasVideo != null and hasVideo">
+          AND video IS NOT NULL AND video != ''
+        </if>
+        <if test="visibleType != null">
+          AND visible_type = #{visibleType}
         </if>
     </select>
 

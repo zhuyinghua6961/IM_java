@@ -22,33 +22,71 @@
     </div>
 
     <div class="square-search-bar">
-      <el-input
-        v-model="searchKeyword"
-        placeholder="搜索帖子内容 / 标题"
-        clearable
-        style="max-width: 260px;"
-        @keyup.enter="handleSearch"
-      />
-      <el-select
-        v-model="searchTags"
-        multiple
-        filterable
-        allow-create
-        default-first-option
-        placeholder="选择或输入标签"
-        style="min-width: 260px; margin-left: 8px;"
-      >
-        <el-option
-          v-for="tag in allTagOptions"
-          :key="tag"
-          :label="tag"
-          :value="tag"
+      <div class="square-search-row square-search-main">
+        <el-input
+          v-model="searchKeyword"
+          placeholder="搜索帖子内容 / 标题"
+          clearable
+          class="square-search-input"
+          @keyup.enter="handleSearch"
         />
-      </el-select>
-      <el-button type="primary" size="small" style="margin-left: 8px;" @click="handleSearch">
-        搜索
-      </el-button>
-      <el-button size="small" @click="resetSearch">重置</el-button>
+        <el-select
+          v-model="searchTags"
+          multiple
+          filterable
+          allow-create
+          default-first-option
+          placeholder="选择或输入标签"
+          class="square-search-tags"
+        >
+          <el-option
+            v-for="tag in allTagOptions"
+            :key="tag"
+            :label="tag"
+            :value="tag"
+          />
+        </el-select>
+        <el-button type="primary" size="small" @click="handleSearch">
+          搜索
+        </el-button>
+        <el-button size="small" @click="resetSearch">重置</el-button>
+      </div>
+      <div class="square-search-row square-search-filters">
+        <span class="square-filter-label">筛选：</span>
+        <el-checkbox
+          v-model="filterHasImage"
+          @change="handleFilterChange"
+        >
+          有图
+        </el-checkbox>
+        <el-checkbox
+          v-model="filterHasVideo"
+          @change="handleFilterChange"
+        >
+          有视频
+        </el-checkbox>
+        <el-select
+          v-model="filterVisibleType"
+          placeholder="可见范围"
+          clearable
+          class="square-filter-select"
+          @change="handleFilterChange"
+        >
+          <el-option label="全部可见范围" :value="null" />
+          <el-option label="仅好友可见" :value="1" />
+        </el-select>
+        <el-select
+          v-model="sortOrder"
+          placeholder="排序"
+          clearable
+          class="square-filter-select"
+          @change="handleFilterChange"
+        >
+          <el-option label="时间最新" value="time" />
+          <el-option label="评论最多" value="comment" />
+          <el-option label="点赞最多" value="like" />
+        </el-select>
+      </div>
     </div>
 
     <el-scrollbar v-if="activeTab !== 'notify'" class="square-list" ref="postScrollbar">
@@ -550,6 +588,11 @@ const allTagOptions = ref(['日常', '吐槽', '求助', '分享', '照片', '�
 const searchKeyword = ref('')
 const searchTags = ref([])
 
+const filterHasImage = ref(false)
+const filterHasVideo = ref(false)
+const filterVisibleType = ref(null)
+const sortOrder = ref('')
+
 const showCommentDialog = ref(false)
 const currentPostId = ref(null)
 const comments = ref([])
@@ -613,7 +656,19 @@ const loadPosts = async (reset = false) => {
     } else if (activeTab.value === 'hot') {
       res = await getHotSquarePosts(page.value, size.value)
     } else {
-      res = await getSquarePosts(page.value, size.value, searchKeyword.value, searchTags.value)
+      const visibleTypeParam = filterVisibleType.value === 1 ? 1 : null
+      const sortParam =
+        sortOrder.value === 'comment' || sortOrder.value === 'like' ? sortOrder.value : null
+      res = await getSquarePosts(
+        page.value,
+        size.value,
+        searchKeyword.value,
+        searchTags.value,
+        filterHasImage.value,
+        filterHasVideo.value,
+        visibleTypeParam,
+        sortParam
+      )
     }
     const data = res.data || {}
     const records = data.records || []
@@ -659,6 +714,11 @@ const resetSearch = () => {
   searchKeyword.value = ''
   searchTags.value = []
   handleSearch()
+}
+
+const handleFilterChange = () => {
+  activeTab.value = 'all'
+  loadPosts(true)
 }
 
 watch(
@@ -1208,6 +1268,59 @@ onMounted(() => {
   padding: 20px;
   background: white;
   border-radius: 8px;
+}
+
+.square-search-bar {
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.square-search-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.square-search-main {
+  border-bottom: 1px dashed #f0f0f0;
+  padding-bottom: 6px;
+}
+
+.square-search-input {
+  flex: 1 1 220px;
+}
+
+.square-search-tags {
+  flex: 1 1 240px;
+}
+
+.square-search-main .el-button {
+  margin-left: 0;
+}
+
+.square-search-main .el-button + .el-button {
+  margin-left: 4px;
+}
+
+.square-search-filters {
+  font-size: 13px;
+  color: #606266;
+}
+
+.square-filter-label {
+  margin-right: 4px;
+  white-space: nowrap;
+}
+
+.square-filter-select {
+  min-width: 120px;
 }
 
 .tab-label {

@@ -27,18 +27,25 @@ public interface SquarePostMapper {
     long countPublic();
 
     /**
-     * 按关键字和标签搜索公开帖子列表
+     * 按关键字、标签及筛选条件搜索公开帖子列表
      */
     List<SquarePost> searchPublic(@Param("keyword") String keyword,
                                   @Param("tags") java.util.List<String> tags,
+                                  @Param("hasImage") Boolean hasImage,
+                                  @Param("hasVideo") Boolean hasVideo,
+                                  @Param("visibleType") Integer visibleType,
+                                  @Param("sort") String sort,
                                   @Param("offset") int offset,
                                   @Param("limit") int limit);
 
     /**
-     * 按关键字和标签搜索公开帖子总数
+     * 按关键字、标签及筛选条件搜索公开帖子总数
      */
     long countSearchPublic(@Param("keyword") String keyword,
-                           @Param("tags") java.util.List<String> tags);
+                           @Param("tags") java.util.List<String> tags,
+                           @Param("hasImage") Boolean hasImage,
+                           @Param("hasVideo") Boolean hasVideo,
+                           @Param("visibleType") Integer visibleType);
 
     /**
      * 按热度排序的公开帖子列表
