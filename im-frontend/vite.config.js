@@ -60,6 +60,12 @@ export default defineConfig({
         target: 'ws://localhost:8082',
         ws: true,
         changeOrigin: true
+      },
+      // AI服务接口
+      '/api/ai': {
+        target: 'http://localhost:8086',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/ai/, '/ai')
       }
     }
   }

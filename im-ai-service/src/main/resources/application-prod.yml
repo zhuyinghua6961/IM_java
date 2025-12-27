@@ -1,0 +1,16 @@
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+# 生产环境敏感配置（使用环境变量）
+im:
+  datasource:
+    username: ${IM_DB_USERNAME:root}
+    password: ${IM_DB_PASSWORD:root123456}
+  redis:
+    password: ${IM_REDIS_PASSWORD:redis123456}
+
+# DeepSeek API密钥
+deepseek:
+  api-key: ${DEEPSEEK_API_KEY}

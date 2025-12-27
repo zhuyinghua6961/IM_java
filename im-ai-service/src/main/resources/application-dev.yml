@@ -1,0 +1,16 @@
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+# 本地开发环境敏感配置
+im:
+  datasource:
+    username: root
+    password: Zhuyinghua123..
+  redis:
+    password: 123456
+
+# DeepSeek API密钥
+deepseek:
+  api-key: sk-b9228f18dbcd49ee8ceb4c75bf431c12

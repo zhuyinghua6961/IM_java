@@ -18,6 +18,7 @@
         <module>im-user-service</module>
         <module>im-message-service</module>
         <module>im-square-service</module>
+        <module>im-ai-service</module>
     </modules>
 
     <properties>

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.im.ai.mapper.AiChatHistoryMapper">
+
+    <resultMap id="BaseResultMap" type="com.im.ai.entity.AiChatHistory">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="message" column="message"/>
+        <result property="reply" column="reply"/>
+        <result property="category" column="category"/>
+        <result property="createTime" column="create_time"/>
+    </resultMap>
+
+    <!-- 保存聊天记录 -->
+    <insert id="insert" parameterType="com.im.ai.entity.AiChatHistory" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO ai_chat_history (user_id, message, reply, category, create_time)
+        VALUES (#{userId}, #{message}, #{reply}, #{category}, NOW())
+    </insert>
+
+    <!-- 查询用户的所有聊天记录 -->
+    <select id="selectByUserId" resultMap="BaseResultMap">
+        SELECT id, user_id, message, reply, category, create_time
+        FROM ai_chat_history
+        WHERE user_id = #{userId}
+        ORDER BY create_time DESC
+    </select>
+
+    <!-- 查询用户最近的聊天记录 -->
+    <select id="selectRecentByUserId" resultMap="BaseResultMap">
+        SELECT id, user_id, message, reply, category, create_time
+        FROM ai_chat_history
+        WHERE user_id = #{userId}
+        ORDER BY create_time DESC
+        LIMIT #{limit}
+    </select>
+
+    <!-- 删除用户的所有聊天记录 -->
+    <delete id="deleteByUserId">
+        DELETE FROM ai_chat_history WHERE user_id = #{userId}
+    </delete>
+
+</mapper>

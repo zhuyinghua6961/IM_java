@@ -33,7 +33,12 @@
           <el-icon><UserFilled /></el-icon>
           <span>我的</span>
         </el-menu-item>
-        
+
+        <el-menu-item index="/ai-chat">
+          <el-icon><ChatDotRound /></el-icon>
+          <span>AI助手</span>
+        </el-menu-item>
+
         <el-menu-item index="/settings">
           <el-icon><Setting /></el-icon>
           <span>设置</span>
@@ -72,6 +77,7 @@ import { useUserStore } from '@/stores/user'
 import { useChatStore } from '@/stores/chat'
 import websocket from '@/utils/websocket'
 import { getConversationList } from '@/api/message'
+import { Service } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const route = useRoute()
