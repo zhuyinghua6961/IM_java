@@ -35,6 +35,13 @@ public class AiChatService {
 
     private static final String FAQ_CACHE_LOCK = "im:ai:faq:lock";
 
+    // 缓存Key前缀
+    private static final String CONVERSATION_LIST_CACHE = "im:ai:conv:list:";
+    private static final String CONVERSATION_MESSAGES_CACHE = "im:ai:conv:messages:";
+
+    // 缓存过期时间：30分钟
+    private static final long CACHE_TTL_MINUTES = 30;
+
     /**
      * 创建新会话
      */
@@ -46,6 +53,10 @@ public class AiChatService {
         conversation.setMessageCount(0);
         conversation.setStatus(1);
         conversationMapper.insert(conversation);
+
+        // 清除会话列表缓存
+        clearConversationListCache(userId);
+
         return conversation;
     }
 
@@ -87,6 +98,10 @@ public class AiChatService {
         } else {
             conversationMapper.updateTitleAndCount(conversation.getId(), conversation.getTitle(), messageCount);
         }
+
+        // 清除相关缓存
+        clearConversationMessagesCache(conversation.getId());
+        clearConversationListCache(conversation.getUserId());
 
         return answer;
     }
@@ -164,8 +179,29 @@ public class AiChatService {
     /**
      * 获取用户的会话列表
      */
+    @SuppressWarnings("unchecked")
     public List<AiConversation> getConversationList(Long userId) {
-        return conversationMapper.selectByUserId(userId);
+        String cacheKey = CONVERSATION_LIST_CACHE + userId;
+        try {
+            List<AiConversation> cached = cacheService.getCache(cacheKey);
+            if (cached != null) {
+                log.debug("会话列表缓存命中: {}", cacheKey);
+                return cached;
+            }
+        } catch (Exception e) {
+            log.warn("获取会话列表缓存失败: {}", cacheKey, e);
+        }
+
+        List<AiConversation> list = conversationMapper.selectByUserId(userId);
+
+        try {
+            cacheService.setCache(cacheKey, list);
+            log.debug("会话列表已缓存: {}", cacheKey);
+        } catch (Exception e) {
+            log.warn("设置会话列表缓存失败: {}", cacheKey, e);
+        }
+
+        return list;
     }
 
     /**
@@ -178,8 +214,29 @@ public class AiChatService {
     /**
      * 获取会话消息列表
      */
+    @SuppressWarnings("unchecked")
     public List<AiChatMessage> getConversationMessages(Long conversationId) {
-        return messageMapper.selectByConversationId(conversationId);
+        String cacheKey = CONVERSATION_MESSAGES_CACHE + conversationId;
+        try {
+            List<AiChatMessage> cached = cacheService.getCache(cacheKey);
+            if (cached != null) {
+                log.debug("会话消息缓存命中: {}", cacheKey);
+                return cached;
+            }
+        } catch (Exception e) {
+            log.warn("获取会话消息缓存失败: {}", cacheKey, e);
+        }
+
+        List<AiChatMessage> messages = messageMapper.selectByConversationId(conversationId);
+
+        try {
+            cacheService.setCache(cacheKey, messages);
+            log.debug("会话消息已缓存: {}", cacheKey);
+        } catch (Exception e) {
+            log.warn("设置会话消息缓存失败: {}", cacheKey, e);
+        }
+
+        return messages;
     }
 
     /**
@@ -187,7 +244,34 @@ public class AiChatService {
      */
     @Transactional
     public void deleteConversation(Long conversationId) {
-        conversationMapper.deleteById(conversationId);
-        // 消息不删除，只保留会话记录
+        AiConversation conv = conversationMapper.selectById(conversationId);
+        if (conv != null) {
+            conversationMapper.deleteById(conversationId);
+            // 清除相关缓存
+            clearConversationMessagesCache(conversationId);
+            clearConversationListCache(conv.getUserId());
+        }
+    }
+
+    // ========== 缓存相关方法 ==========
+
+    private void clearConversationListCache(Long userId) {
+        String cacheKey = CONVERSATION_LIST_CACHE + userId;
+        try {
+            cacheService.deleteCache(cacheKey);
+            log.debug("会话列表缓存已清除: {}", cacheKey);
+        } catch (Exception e) {
+            log.warn("清除会话列表缓存失败: {}", cacheKey, e);
+        }
+    }
+
+    private void clearConversationMessagesCache(Long conversationId) {
+        String cacheKey = CONVERSATION_MESSAGES_CACHE + conversationId;
+        try {
+            cacheService.deleteCache(cacheKey);
+            log.debug("会话消息缓存已清除: {}", cacheKey);
+        } catch (Exception e) {
+            log.warn("清除会话消息缓存失败: {}", cacheKey, e);
+        }
     }
 }
